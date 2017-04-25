@@ -39,13 +39,11 @@ object Main {
   val sumProgram = InoxProgram(Context.empty,
     NoSymbols.withFunctions(Seq(sumFunction)))
 
-  val theory = theoryOf(sumProgram)
-  val assistant = assistantOf(theory)
+  val theory = assistedTheoryOf(sumProgram)
 
   import theory._
-  import assistant._
 
-  def main(args: Array[String]): Unit = /*{
+  def main(args: Array[String]): Unit = {
 
     val foldlID = FreshIdentifier("foldl")
     val foldrID = FreshIdentifier("foldr")
@@ -89,7 +87,7 @@ object Main {
 
     val program = InoxProgram(Context.empty, symbols)
 
-    val theory = theoryOf(program)
+    val theory = assistedTheoryOf(program)
     import theory._
 
     val A = TypeParameter.fresh("A")
@@ -116,7 +114,7 @@ object Main {
           ihs.expression match {
             case C(`cons`, h, t) =>
               forallI("x" :: A) { x =>
-                foldl(f, x, ihs.expression) ==|
+                /*foldl(f, x, ihs.expression) ==|
                 trivial |
                 foldl(f, f(x, h), t) ==|
                 forallE(ihs.hypothesis(t))(f(x, h)) |
@@ -128,7 +126,8 @@ object Main {
                 forallE(isUnit)(h) |
                 f(x, foldl(f, f(z, h), t)) ==|
                 trivial |
-                f(x, foldl(f, z, ihs.expression))
+                f(x, foldl(f, z, ihs.expression))*/
+                IPWprove(foldl(f, x, ihs.expression) === f(x, foldl(f, z, ihs.expression)), new java.io.File("test.iwf"), Map.empty)
               }
 
             case C(`nil`) => isUnit
@@ -159,9 +158,9 @@ object Main {
     }
 
     println(theorem)
-  }*/
-  {
+  }
+  /*{
     val thm = IPWprove(E(sum)(E(BigInt(3))) === E(BigInt(5)), new java.io.File("test.iwf"), Map.empty)
     println(thm)
-  }
+  }*/
 }

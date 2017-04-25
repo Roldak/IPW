@@ -3,12 +3,9 @@ package ipw.core
 import inox.trees._
 import welder._
 import inox.evaluators.RecursiveEvaluator
-import ipw.Assistant
+import ipw.AssistedTheory
 
-trait Suggestions { assistant: Assistant =>
-  
-  import assistant.theory._
-
+trait Suggestions { theory: AssistedTheory =>
   sealed abstract class Suggestion(val descr: String) {
     def apply(e: Expr): Attempt[(Expr, Theorem)]
   }

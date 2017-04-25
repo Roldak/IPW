@@ -1,7 +1,8 @@
 import welder._
+import inox._
 
 package object ipw {
-  def assistantOf(thry: Theory): Assistant = new Assistant {
-    override val theory = thry
+  def assistedTheoryOf(pgm: InoxProgram): AssistedTheory = new AssistedTheory {
+    override val program = pgm
   }
 }

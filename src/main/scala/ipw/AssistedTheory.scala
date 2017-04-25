@@ -9,13 +9,10 @@ import welder._
 import ipw.gui.AssistantWindow
 import ipw.core._
 
-trait Assistant 
-  extends Analysers 
+trait AssistedTheory 
+  extends Theory
+    with Analysers
     with Suggestions { self =>
-      
-  val theory: Theory
-
-  import theory._
 
   def IPWprove(expr: Equals, source: JFile, thms: Map[String, Theorem]): Attempt[Theorem] = {
     //AssistantWindow.open()
@@ -40,11 +37,14 @@ trait Assistant
           choice(step) match {
             case Success((next, stepProof)) => 
               deepen(next, rhs, prove(lhs === next, accumulatedProof, stepProof))
+              
+            case Failure(reason) =>
+              println("Error while applying suggestion: " + reason)
+              deepen(step, rhs, accumulatedProof) // try again
           }
       }
     }
 
     deepen(lhs, rhs, truth)
-    //Failure(Unspecified("not implemented yet"))
   }
 }
