@@ -1,7 +1,7 @@
 import welder._
 
 package object ipw {
-  def assistWith(thry: Theory): Assistant = new Assistant {
+  def assistantOf(thry: Theory): Assistant = new Assistant {
     override val theory = thry
   }
 }

@@ -40,7 +40,7 @@ object Main {
     NoSymbols.withFunctions(Seq(sumFunction)))
 
   val theory = theoryOf(sumProgram)
-  val assistant = assistWith(theory)
+  val assistant = assistantOf(theory)
 
   import theory._
   import assistant._
