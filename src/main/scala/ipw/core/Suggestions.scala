@@ -7,7 +7,6 @@ import inox.evaluators.EvaluationResults._
 import welder._
 
 import ipw.eval.PartialEvaluator
-import ipw.eval.optInvokeFirst
 import ipw.AssistedTheory
 
 trait Suggestions { theory: AssistedTheory =>
@@ -22,8 +21,9 @@ trait Suggestions { theory: AssistedTheory =>
   }
 
   case class ExpandInvocation(val inv: FunctionInvocation) extends Suggestion(s"Expand invocation of ${inv.id}") {
+    val evaluator = PartialEvaluator.default(program, Some(inv))
+    
     override def apply(e: Expr): Attempt[(Expr, Theorem)] = {
-      val evaluator = PartialEvaluator(program, Options(Seq(optInvokeFirst(true))))
       evaluator.eval(e) match {
         case Successful(ev) => Success((ev, prove(Equals(e, ev))))
         case RuntimeError(msg) => Failure(Aborted("RuntimeError: " + msg))

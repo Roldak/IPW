@@ -5,13 +5,19 @@ import inox.evaluators._
 
 import scala.collection.BitSet
 
-object optInvokeFirst extends FlagOptionDef("invokefirst", false)
+trait PartialEvaluator
+    extends ContextualEvaluator
+    with DeterministicEvaluator
+    with SolvingEvaluator {
 
-protected[eval] trait PartialEvaluatorHelper { eval: PartialEvaluator =>
   import program._
   import program.trees._
   import program.symbols._
   import program.trees.exprOps._
+
+  val name = "Partial Evaluator"
+
+  val toExpand: Option[FunctionInvocation]
 
   lazy val ignoreContracts = options.findOptionOrDefault(optIgnoreContracts)
 
@@ -30,86 +36,106 @@ protected[eval] trait PartialEvaluatorHelper { eval: PartialEvaluator =>
     FiniteMap(els.toMap.toSeq.filter { case (_, value) => value != default }.sortBy(_._1.toString), default, from, to)
   }
 
-  protected[eval] def ev(expr: Expr)(implicit rctx: RC, gctx: GC): Expr = {
+  private def isConcreteType(t: Type)(implicit symbols: Symbols) = t match {
+    case x: ADTType => x.lookupADT match {
+      case Some(_: TypedADTConstructor) => true
+      case _                            => false
+    }
+    case _ => true
+  }
+
+  protected[eval] def e(expr: Expr)(implicit rctx: RC, gctx: GC): Expr = {
     val res = expr match {
       case v: Variable => rctx.mappings.get(v.toVal).getOrElse(v)
 
       case Application(caller, args) =>
-        val newArgs = args map ev
-        ev(caller) match {
+        val newArgs = args map e
+        e(caller) match {
           case l @ Lambda(params, body) =>
             val mapping = l.paramSubst(newArgs)
-            ev(body)(rctx.withNewVars(mapping), gctx)
+            e(body)(rctx.withNewVars(mapping), gctx)
           case f =>
             Application(f, newArgs)
         }
 
       case Tuple(ts) =>
-        Tuple(ts map ev)
+        Tuple(ts map e)
 
       case TupleSelect(t, i) =>
-        val Tuple(rs) = ev(t)
+        val Tuple(rs) = e(t)
         rs(i - 1)
 
       case Let(i, ex, b) =>
-        val first = ev(ex)
-        ev(b)(rctx.withNewVar(i, first), gctx)
+        val first = e(ex)
+        e(b)(rctx.withNewVar(i, first), gctx)
 
       case Assume(cond, body) =>
-        if (!ignoreContracts && ev(cond) != BooleanLiteral(true))
+        if (!ignoreContracts && e(cond) != BooleanLiteral(true))
           throw RuntimeError("Assumption did not hold @" + expr.getPos)
-        ev(body)
+        e(body)
 
       case IfExpr(cond, thenn, elze) =>
-        val first = ev(cond)
+        val first = e(cond)
         first match {
-          case BooleanLiteral(true)  => ev(thenn)
-          case BooleanLiteral(false) => ev(elze)
-          case _                     => IfExpr(first, ev(thenn), ev(elze))
+          case BooleanLiteral(true)  => e(thenn)
+          case BooleanLiteral(false) => e(elze)
+          case _                     => IfExpr(first, e(thenn), e(elze))
         }
 
       case FunctionInvocation(id, tps, args) =>
-        FunctionInvocation(id, tps, args map ev)
+        toExpand match {
+          case Some(inv) if inv == expr =>
+            val tfd = getFunction(id, tps)
+            val evArgs = args map e
 
-      case And(Seq(e1, e2)) => ev(e1) match {
+            // build a mapping for the function...
+            val frame = rctx.withNewVars(tfd.paramSubst(evArgs)).newTypes(tps)
+
+            e(tfd.fullBody)(frame, gctx)
+            
+          case _ =>
+            FunctionInvocation(id, tps, args map e)
+        }
+
+      case And(Seq(e1, e2)) => e(e1) match {
         case BooleanLiteral(false) => BooleanLiteral(false)
-        case BooleanLiteral(true)  => ev(e2)
-        case le                    => And(le, ev(e2))
+        case BooleanLiteral(true)  => e(e2)
+        case le                    => And(le, e(e2))
       }
 
       case And(args) =>
-        ev(And(args.head, And(args.tail)))
+        e(And(args.head, And(args.tail)))
 
-      case Or(Seq(e1, e2)) => ev(e1) match {
+      case Or(Seq(e1, e2)) => e(e1) match {
         case BooleanLiteral(true)  => BooleanLiteral(true)
-        case BooleanLiteral(false) => ev(e2)
-        case le                    => Or(le, ev(e2))
+        case BooleanLiteral(false) => e(e2)
+        case le                    => Or(le, e(e2))
       }
 
       case Or(args) =>
-        ev(Or(args.head, Or(args.tail)))
+        e(Or(args.head, Or(args.tail)))
 
       case Not(arg) =>
-        ev(arg) match {
+        e(arg) match {
           case BooleanLiteral(v) => BooleanLiteral(!v)
           case other             => Not(other)
         }
 
       case Implies(l, r) =>
-        ev(l) match {
+        e(l) match {
           case BooleanLiteral(false) => BooleanLiteral(true)
-          case BooleanLiteral(true)  => ev(r)
-          case le                    => Implies(le, ev(r))
+          case BooleanLiteral(true)  => e(r)
+          case le                    => Implies(le, e(r))
         }
 
       case Equals(le, re) =>
-        BooleanLiteral(ev(le) == ev(re))
+        BooleanLiteral(e(le) == e(re))
 
       case ADT(adt, args) =>
-        val cc = ADT(adt, args.map(ev))
+        val cc = ADT(adt, args.map(e))
         if (!ignoreContracts) adt.getADT.invariant.foreach { tfd =>
           val v = Variable.fresh("x", adt, true)
-          ev(tfd.applied(Seq(v)))(rctx.withNewVar(v.toVal, cc), gctx) match {
+          e(tfd.applied(Seq(v)))(rctx.withNewVar(v.toVal, cc), gctx) match {
             case BooleanLiteral(true) =>
             case BooleanLiteral(false) =>
               throw RuntimeError("ADT invariant violation for " + cc.asString)
@@ -120,19 +146,27 @@ protected[eval] trait PartialEvaluatorHelper { eval: PartialEvaluator =>
         cc
 
       case AsInstanceOf(expr, ct) =>
-        val le = ev(expr)
-        if (isSubtypeOf(le.getType, ct)) {
-          le
-        } else {
-          throw RuntimeError("Cast error: cannot cast " + le.asString + " to " + ct.asString)
-        }
+        val le = e(expr)
+        val letp = le.getType
+        if (isConcreteType(letp)) {
+          if (isSubtypeOf(letp, ct)) {
+            le
+          } else {
+            throw RuntimeError("Cast error: cannot cast " + le.asString + " to " + ct.asString)
+          }
+        } else
+          AsInstanceOf(le, ct)
 
       case IsInstanceOf(expr, ct) =>
-        val le = ev(expr)
-        BooleanLiteral(isSubtypeOf(le.getType, ct))
+        val le = e(expr)
+        val letp = le.getType
+        if (isConcreteType(letp))
+          BooleanLiteral(isSubtypeOf(letp, ct))
+        else
+          IsInstanceOf(le, ct)
 
       case ADTSelector(expr, sel) =>
-        ev(expr) match {
+        e(expr) match {
           case ADT(adt, args) => args(adt.getADT.definition match {
             case cons: ADTConstructor => cons.selectorID2Index(sel)
             case _                    => throw RuntimeError("Unexpected case class type")
@@ -141,7 +175,7 @@ protected[eval] trait PartialEvaluatorHelper { eval: PartialEvaluator =>
         }
 
       case Plus(l, r) =>
-        (ev(l), ev(r)) match {
+        (e(l), e(r)) match {
           case (BVLiteral(i1, s1), BVLiteral(i2, s2)) if s1 == s2 => BVLiteral(
             (1 to s1).foldLeft((BitSet.empty, false)) {
               case ((res, carry), i) =>
@@ -157,8 +191,8 @@ protected[eval] trait PartialEvaluatorHelper { eval: PartialEvaluator =>
         }
 
       case Minus(l, r) =>
-        (ev(l), ev(r)) match {
-          case (b1: BVLiteral, b2: BVLiteral)           => ev(Plus(b1, UMinus(b2)))
+        (e(l), e(r)) match {
+          case (b1: BVLiteral, b2: BVLiteral)           => e(Plus(b1, UMinus(b2)))
           case (IntegerLiteral(i1), IntegerLiteral(i2)) => IntegerLiteral(i1 - i2)
           case (FractionLiteral(ln, ld), FractionLiteral(rn, rd)) =>
             normalizeFraction(FractionLiteral(ln * rd - rn * ld, ld * rd))
@@ -166,24 +200,24 @@ protected[eval] trait PartialEvaluatorHelper { eval: PartialEvaluator =>
         }
 
       case StringConcat(l, r) =>
-        (ev(l), ev(r)) match {
+        (e(l), e(r)) match {
           case (StringLiteral(i1), StringLiteral(i2)) => StringLiteral(i1 + i2)
           case (le, re)                               => StringConcat(le, re)
         }
 
-      case StringLength(a) => ev(a) match {
+      case StringLength(a) => e(a) match {
         case StringLiteral(a) => IntegerLiteral(a.length)
         case res              => StringLength(res)
       }
 
-      case SubString(a, start, end) => (ev(a), ev(start), ev(end)) match {
+      case SubString(a, start, end) => (e(a), e(start), e(end)) match {
         case (StringLiteral(a), IntegerLiteral(b), IntegerLiteral(c)) =>
           StringLiteral(a.substring(b.toInt, c.toInt))
         case (x, y, z) => SubString(x, y, z)
       }
 
       case UMinus(ex) =>
-        ev(ex) match {
+        e(ex) match {
           case b @ BVLiteral(_, s)   => BVLiteral(-b.toBigInt, s)
           case IntegerLiteral(i)     => IntegerLiteral(-i)
           case FractionLiteral(n, d) => FractionLiteral(-n, d)
@@ -191,11 +225,11 @@ protected[eval] trait PartialEvaluatorHelper { eval: PartialEvaluator =>
         }
 
       case Times(l, r) =>
-        (ev(l), ev(r)) match {
+        (e(l), e(r)) match {
           case (BVLiteral(i1, s1), BVLiteral(i2, s2)) if s1 == s2 =>
             i1.foldLeft(BVLiteral(0, s1): Expr) {
               case (res, i) =>
-                ev(Plus(res, BVLiteral(shift(i2, s2, i - 1), s1)))
+                e(Plus(res, BVLiteral(shift(i2, s2, i - 1), s1)))
             }
           case (IntegerLiteral(i1), IntegerLiteral(i2)) => IntegerLiteral(i1 * i2)
           case (FractionLiteral(ln, ld), FractionLiteral(rn, rd)) =>
@@ -204,7 +238,7 @@ protected[eval] trait PartialEvaluatorHelper { eval: PartialEvaluator =>
         }
 
       case Division(l, r) =>
-        (ev(l), ev(r)) match {
+        (e(l), e(r)) match {
           case (b1 @ BVLiteral(_, s1), b2 @ BVLiteral(_, s2)) if s1 == s2 =>
             val bi2 = b2.toBigInt
             if (bi2 != 0) BVLiteral(b1.toBigInt / bi2, s1) else throw RuntimeError("Division by 0.")
@@ -218,7 +252,7 @@ protected[eval] trait PartialEvaluatorHelper { eval: PartialEvaluator =>
         }
 
       case Remainder(l, r) =>
-        (ev(l), ev(r)) match {
+        (e(l), e(r)) match {
           case (b1 @ BVLiteral(_, s1), b2 @ BVLiteral(_, s2)) if s1 == s2 =>
             val bi2 = b2.toBigInt
             if (bi2 != 0) BVLiteral(b1.toBigInt % bi2, s1) else throw RuntimeError("Division by 0.")
@@ -228,7 +262,7 @@ protected[eval] trait PartialEvaluatorHelper { eval: PartialEvaluator =>
         }
 
       case Modulo(l, r) =>
-        (ev(l), ev(r)) match {
+        (e(l), e(r)) match {
           case (b1 @ BVLiteral(_, s1), b2 @ BVLiteral(_, s2)) if s1 == s2 =>
             val bi2 = b2.toBigInt
             if (bi2 < 0)
@@ -248,39 +282,39 @@ protected[eval] trait PartialEvaluatorHelper { eval: PartialEvaluator =>
         }
 
       case BVNot(b) =>
-        ev(b) match {
+        e(b) match {
           case BVLiteral(bs, s) =>
             BVLiteral(BitSet.empty ++ (1 to s).flatMap(i => if (bs(i)) None else Some(i)), s)
           case other => BVNot(other)
         }
 
       case BVAnd(l, r) =>
-        (ev(l), ev(r)) match {
+        (e(l), e(r)) match {
           case (BVLiteral(i1, s1), BVLiteral(i2, s2)) if s1 == s2 => BVLiteral(i1 & i2, s1)
           case (le, re) => BVAnd(le, re)
         }
 
       case BVOr(l, r) =>
-        (ev(l), ev(r)) match {
+        (e(l), e(r)) match {
           case (BVLiteral(i1, s1), BVLiteral(i2, s2)) if s1 == s2 => BVLiteral(i1 | i2, s1)
           case (le, re) => BVOr(le, re)
         }
 
       case BVXor(l, r) =>
-        (ev(l), ev(r)) match {
+        (e(l), e(r)) match {
           case (BVLiteral(i1, s1), BVLiteral(i2, s2)) if s1 == s2 => BVLiteral(i1 ^ i2, s1)
           case (le, re) => BVXor(le, re)
         }
 
       case BVShiftLeft(l, r) =>
-        (ev(l), ev(r)) match {
+        (e(l), e(r)) match {
           case (BVLiteral(i1, s1), b2 @ BVLiteral(_, s2)) if s1 == s2 =>
             BVLiteral(shift(i1, s1, b2.toBigInt.toInt), s1)
           case (le, re) => BVShiftLeft(le, re)
         }
 
       case BVAShiftRight(l, r) =>
-        (ev(l), ev(r)) match {
+        (e(l), e(r)) match {
           case (BVLiteral(i1, s1), b2 @ BVLiteral(_, s2)) if s1 == s2 =>
             val shiftCount = b2.toBigInt.toInt
             val shifted = shift(i1, s1, -shiftCount)
@@ -289,115 +323,115 @@ protected[eval] trait PartialEvaluatorHelper { eval: PartialEvaluator =>
         }
 
       case BVLShiftRight(l, r) =>
-        (ev(l), ev(r)) match {
+        (e(l), e(r)) match {
           case (BVLiteral(i1, s1), b2 @ BVLiteral(_, s2)) if s1 == s2 =>
             BVLiteral(shift(i1, s1, -b2.toBigInt.toInt), s1)
           case (le, re) => BVLShiftRight(le, re)
         }
 
       case LessThan(l, r) =>
-        (ev(l), ev(r)) match {
+        (e(l), e(r)) match {
           case (b1 @ BVLiteral(_, s1), b2 @ BVLiteral(_, s2)) if s1 == s2 =>
             BooleanLiteral(b1.toBigInt < b2.toBigInt)
           case (IntegerLiteral(i1), IntegerLiteral(i2)) => BooleanLiteral(i1 < i2)
           case (a @ FractionLiteral(_, _), b @ FractionLiteral(_, _)) =>
-            val FractionLiteral(n, _) = ev(Minus(a, b))
+            val FractionLiteral(n, _) = e(Minus(a, b))
             BooleanLiteral(n < 0)
           case (CharLiteral(c1), CharLiteral(c2)) => BooleanLiteral(c1 < c2)
           case (le, re)                           => LessThan(le, re)
         }
 
       case GreaterThan(l, r) =>
-        (ev(l), ev(r)) match {
+        (e(l), e(r)) match {
           case (b1 @ BVLiteral(_, s1), b2 @ BVLiteral(_, s2)) if s1 == s2 =>
             BooleanLiteral(b1.toBigInt > b2.toBigInt)
           case (IntegerLiteral(i1), IntegerLiteral(i2)) => BooleanLiteral(i1 > i2)
           case (a @ FractionLiteral(_, _), b @ FractionLiteral(_, _)) =>
-            val FractionLiteral(n, _) = ev(Minus(a, b))
+            val FractionLiteral(n, _) = e(Minus(a, b))
             BooleanLiteral(n > 0)
           case (CharLiteral(c1), CharLiteral(c2)) => BooleanLiteral(c1 > c2)
           case (le, re)                           => GreaterThan(le, re)
         }
 
       case LessEquals(l, r) =>
-        (ev(l), ev(r)) match {
+        (e(l), e(r)) match {
           case (b1 @ BVLiteral(_, s1), b2 @ BVLiteral(_, s2)) if s1 == s2 =>
             BooleanLiteral(b1.toBigInt <= b2.toBigInt)
           case (IntegerLiteral(i1), IntegerLiteral(i2)) => BooleanLiteral(i1 <= i2)
           case (a @ FractionLiteral(_, _), b @ FractionLiteral(_, _)) =>
-            val FractionLiteral(n, _) = ev(Minus(a, b))
+            val FractionLiteral(n, _) = e(Minus(a, b))
             BooleanLiteral(n <= 0)
           case (CharLiteral(c1), CharLiteral(c2)) => BooleanLiteral(c1 <= c2)
           case (le, re)                           => LessEquals(le, re)
         }
 
       case GreaterEquals(l, r) =>
-        (ev(l), ev(r)) match {
+        (e(l), e(r)) match {
           case (b1 @ BVLiteral(_, s1), b2 @ BVLiteral(_, s2)) if s1 == s2 =>
             BooleanLiteral(b1.toBigInt >= b2.toBigInt)
           case (IntegerLiteral(i1), IntegerLiteral(i2)) => BooleanLiteral(i1 >= i2)
           case (a @ FractionLiteral(_, _), b @ FractionLiteral(_, _)) =>
-            val FractionLiteral(n, _) = ev(Minus(a, b))
+            val FractionLiteral(n, _) = e(Minus(a, b))
             BooleanLiteral(n >= 0)
           case (CharLiteral(c1), CharLiteral(c2)) => BooleanLiteral(c1 >= c2)
           case (le, re)                           => GreaterEquals(le, re)
         }
 
       case SetAdd(s1, elem) =>
-        (ev(s1), ev(elem)) match {
+        (e(s1), e(elem)) match {
           case (FiniteSet(els1, tpe), evElem) => finiteSet(els1 :+ evElem, tpe)
           case (le, re)                       => SetAdd(le, re)
         }
 
       case SetUnion(s1, s2) =>
-        (ev(s1), ev(s2)) match {
+        (e(s1), e(s2)) match {
           case (FiniteSet(els1, tpe), FiniteSet(els2, _)) => finiteSet(els1 ++ els2, tpe)
           case (le, re)                                   => SetUnion(le, re)
         }
 
       case SetIntersection(s1, s2) =>
-        (ev(s1), ev(s2)) match {
+        (e(s1), e(s2)) match {
           case (FiniteSet(els1, tpe), FiniteSet(els2, _)) => finiteSet(els1 intersect els2, tpe)
           case (le, re)                                   => SetIntersection(le, re)
         }
 
       case SetDifference(s1, s2) =>
-        (ev(s1), ev(s2)) match {
+        (e(s1), e(s2)) match {
           case (FiniteSet(els1, tpe), FiniteSet(els2, _)) => finiteSet(els1.toSet -- els2, tpe)
           case (le, re)                                   => SetDifference(le, re)
         }
 
-      case ElementOfSet(el, s) => (ev(el), ev(s)) match {
-        case (ev, FiniteSet(els, _)) => BooleanLiteral(els.contains(ev))
-        case (l, r)                  => ElementOfSet(l, r)
+      case ElementOfSet(el, s) => (e(el), e(s)) match {
+        case (e, FiniteSet(els, _)) => BooleanLiteral(els.contains(e))
+        case (l, r)                 => ElementOfSet(l, r)
       }
 
-      case SubsetOf(s1, s2) => (ev(s1), ev(s2)) match {
+      case SubsetOf(s1, s2) => (e(s1), e(s2)) match {
         case (FiniteSet(els1, _), FiniteSet(els2, _)) => BooleanLiteral(els1.toSet.subsetOf(els2.toSet))
         case (le, re)                                 => SubsetOf(le, re)
       }
 
       case f @ FiniteSet(els, base) =>
-        finiteSet(els.map(ev), base)
+        finiteSet(els.map(e), base)
 
-      case BagAdd(bag, elem) => (ev(bag), ev(elem)) match {
+      case BagAdd(bag, elem) => (e(bag), e(elem)) match {
         case (FiniteBag(els, tpe), evElem) =>
           val (matching, rest) = els.partition(_._1 == evElem)
           finiteBag(rest :+ (evElem -> matching.lastOption.map {
             case (_, IntegerLiteral(i)) => IntegerLiteral(i + 1)
-            case (_, ev)                => throw EvalError(typeErrorMsg(ev, IntegerType))
+            case (_, e)                 => throw EvalError(typeErrorMsg(e, IntegerType))
           }.getOrElse(IntegerLiteral(1))), tpe)
 
         case (le, re) => BagAdd(le, re)
       }
 
-      case MultiplicityInBag(elem, bag) => (ev(elem), ev(bag)) match {
+      case MultiplicityInBag(elem, bag) => (e(elem), e(bag)) match {
         case (evElem, FiniteBag(els, tpe)) =>
           els.collect { case (k, v) if k == evElem => v }.lastOption.getOrElse(IntegerLiteral(0))
         case (le, re) => MultiplicityInBag(le, re)
       }
 
-      case BagIntersection(b1, b2) => (ev(b1), ev(b2)) match {
+      case BagIntersection(b1, b2) => (e(b1), e(b2)) match {
         case (FiniteBag(els1, tpe), FiniteBag(els2, _)) =>
           val map2 = els2.toMap
           finiteBag(els1.flatMap {
@@ -413,7 +447,7 @@ protected[eval] trait PartialEvaluatorHelper { eval: PartialEvaluator =>
         case (le, re) => BagIntersection(le, re)
       }
 
-      case BagUnion(b1, b2) => (ev(b1), ev(b2)) match {
+      case BagUnion(b1, b2) => (e(b1), e(b2)) match {
         case (FiniteBag(els1, tpe), FiniteBag(els2, _)) =>
           val (map1, map2) = (els1.toMap, els2.toMap)
           finiteBag((map1.keys ++ map2.keys).toSet.map { (k: Expr) =>
@@ -426,7 +460,7 @@ protected[eval] trait PartialEvaluatorHelper { eval: PartialEvaluator =>
         case (le, re) => BagUnion(le, re)
       }
 
-      case BagDifference(b1, b2) => (ev(b1), ev(b2)) match {
+      case BagDifference(b1, b2) => (e(b1), e(b2)) match {
         case (FiniteBag(els1, tpe), FiniteBag(els2, _)) =>
           val map2 = els2.toMap
           finiteBag(els1.flatMap {
@@ -443,40 +477,40 @@ protected[eval] trait PartialEvaluatorHelper { eval: PartialEvaluator =>
       }
 
       case FiniteBag(els, base) =>
-        finiteBag(els.map { case (k, v) => (ev(k), ev(v)) }, base)
+        finiteBag(els.map { case (k, v) => (e(k), e(v)) }, base)
 
       case l @ Lambda(_, _) =>
         val (nl, deps) = normalizeStructure(l)
         val newCtx = deps.foldLeft(rctx) {
-          case (rctx, (v, dep)) => rctx.withNewVar(v.toVal, ev(dep)(rctx, gctx))
+          case (rctx, (v, dep)) => rctx.withNewVar(v.toVal, e(dep)(rctx, gctx))
         }
         val mapping = variablesOf(nl).map(v => v -> newCtx.mappings(v.toVal)).toMap
         replaceFromSymbols(mapping, nl)
 
       case f: Forall => onForallInvocation {
-        replaceFromSymbols(variablesOf(f).map(v => v -> ev(v)).toMap, f).asInstanceOf[Forall]
+        replaceFromSymbols(variablesOf(f).map(v => v -> e(v)).toMap, f).asInstanceOf[Forall]
       }
 
       case c: Choose =>
         rctx.getChoose(c.res.id) match {
-          case Some(expr) => ev(expr)(rctx.withoutChoose(c.res.id), gctx)
+          case Some(expr) => e(expr)(rctx.withoutChoose(c.res.id), gctx)
           case None => onChooseInvocation {
-            replaceFromSymbols(variablesOf(c).map(v => v -> ev(v)).toMap, c).asInstanceOf[Choose]
+            replaceFromSymbols(variablesOf(c).map(v => v -> e(v)).toMap, c).asInstanceOf[Choose]
           }
         }
 
       case f @ FiniteMap(ss, dflt, kT, vT) =>
-        finiteMap(ss.map { case (k, v) => (ev(k), ev(v)) }, ev(dflt), kT, vT)
+        finiteMap(ss.map { case (k, v) => (e(k), e(v)) }, e(dflt), kT, vT)
 
-      case g @ MapApply(m, k) => (ev(m), ev(k)) match {
-        case (FiniteMap(ss, dflt, _, _), ev) =>
-          ss.toMap.getOrElse(ev, dflt)
+      case g @ MapApply(m, k) => (e(m), e(k)) match {
+        case (FiniteMap(ss, dflt, _, _), e) =>
+          ss.toMap.getOrElse(e, dflt)
         case (l, r) => MapApply(l, r)
       }
 
-      case g @ MapUpdated(m, k, v) => (ev(m), ev(k), ev(v)) match {
-        case (FiniteMap(ss, dflt, kT, vT), ek, ev) =>
-          finiteMap((ss.toMap + (ek -> ev)).toSeq, dflt, kT, vT)
+      case g @ MapUpdated(m, k, v) => (e(m), e(k), e(v)) match {
+        case (FiniteMap(ss, dflt, kT, vT), ek, e) =>
+          finiteMap((ss.toMap + (ek -> e)).toSeq, dflt, kT, vT)
         case (m, l, r) => MapUpdated(m, l, r)
       }
 
@@ -486,50 +520,35 @@ protected[eval] trait PartialEvaluatorHelper { eval: PartialEvaluator =>
 
       case other               => other
     }
-    println(s"$expr: ${expr.getType} => $res: ${expr.getType}")
+    //println(s"$expr: ${expr.getType} => $res: ${expr.getType}")
     res
   }
-}
 
-trait PartialEvaluator
-    extends ContextualEvaluator
-    with DeterministicEvaluator
-    with SolvingEvaluator
-    with PartialEvaluatorHelper {
-
-  import program._
-  import program.trees._
-  import program.symbols._
-  import program.trees.exprOps._
-
-  val name = "Partial Evaluator"
-
-  lazy val invokefirst = options.findOptionOrDefault(optInvokeFirst)
-
-  protected[eval] def e(expr: Expr)(implicit rctx: RC, gctx: GC): Expr = expr match {
+  /*protected[eval] def e(expr: Expr)(implicit rctx: RC, gctx: GC): Expr = expr match {
     case FunctionInvocation(id, tps, args) if invokefirst =>
       val tfd = getFunction(id, tps)
-      val evArgs = args map super[PartialEvaluatorHelper].ev
+      val evArgs = args map super[PartialEvaluatorHelper].e
 
       // build a mapping for the function...
       val frame = rctx.withNewVars(tfd.paramSubst(evArgs)).newTypes(tps)
 
-      super[PartialEvaluatorHelper].ev(tfd.fullBody)(frame, gctx)
+      super[PartialEvaluatorHelper].e(tfd.fullBody)(frame, gctx)
 
     case other =>
-      super[PartialEvaluatorHelper].ev(other)
-  }
+      super[PartialEvaluatorHelper].e(other)
+  }*/
 }
 
 object PartialEvaluator {
-  def apply(p: InoxProgram, opts: Options): PartialEvaluator { val program: p.type } = {
+  def apply(p: InoxProgram, opts: Options, toExp: Option[p.trees.FunctionInvocation]): PartialEvaluator { val program: p.type } = {
     new {
       val program: p.type = p
       val options = opts
     } with PartialEvaluator with HasDefaultGlobalContext with HasDefaultRecContext {
       val semantics: p.Semantics = p.getSemantics
+      override lazy val toExpand = toExp
     }
   }
 
-  def default(p: InoxProgram) = apply(p, p.ctx.options)
+  def default(p: InoxProgram, toExpand: Option[p.trees.FunctionInvocation]) = apply(p, p.ctx.options, toExpand)
 }
