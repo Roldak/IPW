@@ -8,10 +8,15 @@ import ipw.utils.TreeCollector
 import ipw.AssistedTheory
 
 trait Analysers { theory: AssistedTheory =>
-  def analyse(e: Expr) = (new TreeCollector[Suggestion] {
+  private lazy val analyser = new TreeCollector[Suggestion] {
     override def collect(e: Expr): Seq[Suggestion] = e match {
       case inv: FunctionInvocation => Seq(new ExpandInvocation(inv))
       case _ => Seq()
     }
-  })(e)
+  }
+  
+  def analyse(e: Expr) = {
+    println(theory)
+    analyser(e)
+  }
 }
