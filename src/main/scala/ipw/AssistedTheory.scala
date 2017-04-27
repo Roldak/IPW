@@ -20,12 +20,12 @@ trait AssistedTheory
     with Suggestions
     with AssistantWindow { self =>
 
-  type ChoosingEnd = SynchronizedChannel.End[Seq[Suggestion], Suggestion]
-  type SuggestingEnd = SynchronizedChannel.End[Suggestion, Seq[Suggestion]]
+  type ChoosingEnd = SynchronizedChannel.End[(Seq[Suggestion], Expr), Suggestion]
+  type SuggestingEnd = SynchronizedChannel.End[Suggestion, (Seq[Suggestion], Expr)]
       
   def IPWprove(expr: Equals, source: JFile, thms: Map[String, Theorem]): Attempt[Theorem] = {
     val Equals(lhs, rhs) = expr
-    val (choosingEnd, suggestingEnd) = SynchronizedChannel[Seq[Suggestion], Suggestion]()
+    val (choosingEnd, suggestingEnd) = SynchronizedChannel[(Seq[Suggestion], Expr), Suggestion]()
     
     openAssistantWindow(choosingEnd)
 
@@ -38,7 +38,7 @@ trait AssistedTheory
         case _ =>
           val suggestions = analyse(step)
           
-          suggestingEnd.write(suggestions)
+          suggestingEnd.write((suggestions, step))
 
           println("Suggestions: " + suggestions + " : ")
 
