@@ -18,6 +18,20 @@ import scalafx.concurrent.Task
 import scalafx.scene.control.cell.TextFieldListCell
 import scalafx.util.StringConverter
 
+private[gui] object Styles {
+  val tfStyle = """
+      -fx-background-color: rgb(250, 250, 250);
+      -fx-border-color: black;
+      -fx-border-size: 1px;
+    """
+
+  val eqStyle = """
+      -fx-background-color: rgb(250, 250, 250);
+      -fx-border-color: black;
+      -fx-border-width: 0 0 1 0;
+    """
+}
+
 trait AssistantWindow extends Rendering { theory: AssistedTheory =>
 
   Platform.implicitExit = false
@@ -33,18 +47,12 @@ trait AssistantWindow extends Rendering { theory: AssistedTheory =>
   }
 
   def openAssistantWindow(choosingEnd: ChoosingEnd) = {
-
-    val tfBackground = """
-      -fx-background-color: rgb(250, 250, 250);
-      -fx-border-color: black;
-      -fx-border-size: 1px;
-    """
-
     Platform.runLater {
-      val box = new VBox {
-        spacing = 10
-      }
       val lv = new ObservableBuffer[Suggestion]
+      val box = new VBox
+      val scrollPane = new ScrollPane {
+        content = box
+      }
 
       val dialogStage = new Stage { outer =>
         title = "IPW Assistant Window"
@@ -58,12 +66,9 @@ trait AssistantWindow extends Rendering { theory: AssistedTheory =>
               onAction = handle { outer.close() }
             }
             center = new BorderPane {
-              style = tfBackground
+              style = Styles.tfStyle
               margin = Insets(10, 0, 10, 0)
-              center = new ScrollPane {
-                padding = Insets(10)
-                content = box
-              }
+              center = scrollPane
             }
             right = new BorderPane {
               padding = Insets(10, 0, 10, 5)
@@ -87,7 +92,15 @@ trait AssistantWindow extends Rendering { theory: AssistedTheory =>
         Platform.runLater {
           lv.clear()
           lv ++= suggs
-          box.children.add(new ASTRenderer(expr))
+
+          val child = new BorderPane {
+            padding = Insets(10)
+            style = Styles.eqStyle
+            center = new ASTRenderer(expr)
+            minWidth <== scrollPane.width
+          }
+
+          box.children.add(child)
         }
       }
 
