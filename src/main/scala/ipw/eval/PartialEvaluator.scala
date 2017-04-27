@@ -523,20 +523,6 @@ trait PartialEvaluator
     //println(s"$expr: ${expr.getType} => $res: ${expr.getType}")
     res
   }
-
-  /*protected[eval] def e(expr: Expr)(implicit rctx: RC, gctx: GC): Expr = expr match {
-    case FunctionInvocation(id, tps, args) if invokefirst =>
-      val tfd = getFunction(id, tps)
-      val evArgs = args map super[PartialEvaluatorHelper].e
-
-      // build a mapping for the function...
-      val frame = rctx.withNewVars(tfd.paramSubst(evArgs)).newTypes(tps)
-
-      super[PartialEvaluatorHelper].e(tfd.fullBody)(frame, gctx)
-
-    case other =>
-      super[PartialEvaluatorHelper].e(other)
-  }*/
 }
 
 object PartialEvaluator {

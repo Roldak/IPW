@@ -15,8 +15,5 @@ trait Analysers { theory: AssistedTheory =>
     }
   }
   
-  def analyse(e: Expr) = {
-    println(theory)
-    analyser(e)
-  }
+  def analyse(e: Expr) = analyser(e)
 }

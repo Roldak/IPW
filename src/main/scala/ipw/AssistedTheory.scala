@@ -1,22 +1,33 @@
 package ipw
 
+import java.io.{ File => JFile }
+
 import scala.annotation.tailrec
+
 import inox._
 import inox.trees._
 import inox.trees.dsl._
-import java.io.{ File => JFile }
+
 import welder._
+
 import ipw.gui.AssistantWindow
 import ipw.core._
+import ipw.io.SynchronizedChannel
 
 trait AssistedTheory 
   extends Theory
     with Analysers
-    with Suggestions { self =>
+    with Suggestions
+    with AssistantWindow { self =>
 
+  type ChoosingEnd = SynchronizedChannel.End[Seq[Suggestion], Suggestion]
+  type SuggestingEnd = SynchronizedChannel.End[Suggestion, Seq[Suggestion]]
+      
   def IPWprove(expr: Equals, source: JFile, thms: Map[String, Theorem]): Attempt[Theorem] = {
-    //AssistantWindow.open()
     val Equals(lhs, rhs) = expr
+    val (choosingEnd, suggestingEnd) = SynchronizedChannel[Seq[Suggestion], Suggestion]()
+    
+    openAssistantWindow(choosingEnd)
 
     @tailrec
     def deepen(step: Expr, rhs: Expr, accumulatedProof: Theorem): Attempt[Theorem] = {
@@ -25,15 +36,14 @@ trait AssistedTheory
       prove(step === rhs) match {
         case thm @ Success(_) => prove(lhs === rhs, accumulatedProof, thm)
         case _ =>
-          // analyse lhs knowing rhs
           val suggestions = analyse(step)
-          // wait for user choice
+          
+          suggestingEnd.write(suggestions)
 
           println("Suggestions: " + suggestions + " : ")
 
-          val choice = if (suggestions.isEmpty) Pass else suggestions.head //chooseAmong(suggestions, source)
+          val choice = suggestingEnd.read //if (suggestions.isEmpty) Pass else suggestions.head //chooseAmong(suggestions, source)
 
-          // apply transformation
           choice(step) match {
             case Success((next, stepProof)) => 
               deepen(next, rhs, prove(lhs === next, accumulatedProof, stepProof))

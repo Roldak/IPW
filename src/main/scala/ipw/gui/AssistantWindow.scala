@@ -11,16 +11,18 @@ import scalafx.scene.control.Button
 import scalafx.geometry.Insets
 import scalafx.stage.Stage
 
-import java.util.concurrent
-
 import javafx.embed.swing.JFXPanel
 
-object AssistantWindow {
+import ipw.io.SynchronizedChannel
+import ipw.AssistedTheory
+
+trait AssistantWindow { theory: AssistedTheory =>
+  
   Platform.implicitExit = false
 
   new JFXPanel() // force init
 
-  def open() = {
+  def openAssistantWindow(choosingEnd: ChoosingEnd) = {
     Platform.runLater {
       val dialogStage = new Stage { outer =>
         title = "IPW Assistant Window"
@@ -32,6 +34,13 @@ object AssistantWindow {
             bottom = new Button {
               text = "Click me to close the dialog"
               onAction = handle { outer.close() }
+            }
+            top = new Button {
+              text = "Choose first"
+              onAction = handle {
+                val suggs = choosingEnd.read
+                choosingEnd.write(if (suggs.isEmpty) Pass else suggs.head)
+              }
             }
           }
         }
