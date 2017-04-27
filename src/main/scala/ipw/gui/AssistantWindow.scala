@@ -56,15 +56,11 @@ trait AssistantWindow extends Rendering { theory: AssistedTheory =>
 
       val dialogStage = new Stage { outer =>
         title = "IPW Assistant Window"
-        width = 800
-        height = 600
+        width = 1024
+        height = 768
         scene = new Scene {
           root = new BorderPane {
             padding = Insets(20)
-            bottom = new Button {
-              text = "Click me to close the dialog"
-              onAction = handle { outer.close() }
-            }
             center = new BorderPane {
               style = Styles.tfStyle
               margin = Insets(10, 0, 10, 0)
