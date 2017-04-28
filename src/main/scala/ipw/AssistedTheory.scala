@@ -38,7 +38,7 @@ trait AssistedTheory
           
           suggestingEnd.write((suggestions, step))
 
-          val choice = suggestingEnd.read //if (suggestions.isEmpty) Pass else suggestions.head //chooseAmong(suggestions, source)
+          val choice = suggestingEnd.read
 
           choice(step) match {
             case Success((next, stepProof)) => 

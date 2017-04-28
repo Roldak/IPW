@@ -68,7 +68,7 @@ trait Rendering { theory: AssistedTheory =>
     e match {
       case FractionLiteral(a, b) => Seq(Code.Literal(a.toString), Code.Operator("/"), Code.Literal(b.toString))
       
-      case x: Literal[AnyRef] => Seq(Code.Literal(x.value.toString))
+      case x: Literal[AnyRef] @unchecked => Seq(Code.Literal(x.value.toString))
       
       case BinaryOperator(a, b, op) => buildFlow(a) ++ Seq(Code.Operator(op)) ++ buildFlow(b)
       

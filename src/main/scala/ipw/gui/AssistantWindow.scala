@@ -30,6 +30,12 @@ private[gui] object Styles {
       -fx-border-color: black;
       -fx-border-width: 0 0 1 0;
     """
+
+  val eqHoverStyle = """
+      -fx-background-color: rgb(255, 255, 255);
+      -fx-border-color: rgb(30, 30, 90);
+      -fx-border-width: 0 0 1 0;
+    """
 }
 
 trait AssistantWindow extends Rendering { theory: AssistedTheory =>
@@ -72,9 +78,9 @@ trait AssistantWindow extends Rendering { theory: AssistedTheory =>
                 items = suggestionBuffer
                 cellFactory = TextFieldListCell.forListView(StringConverter.toStringConverter[Suggestion](s => s.descr))
                 selectionModel().selectedItem.onChange { (_, _, newValue) =>
-                  if (newValue != null) { // is null when clearSelection() triggers onChange
+                  if (newValue != null) { // is null when suggestionBuffer.clear() triggers onChange
                     choosingEnd.write(newValue)
-                    Platform.runLater { selectionModel().clearSelection() }
+                    Platform.runLater { suggestionBuffer.clear() }
                   }
                 }
               }
@@ -91,12 +97,13 @@ trait AssistantWindow extends Rendering { theory: AssistedTheory =>
 
           val child = new BorderPane {
             padding = Insets(10)
-            style = Styles.eqStyle
+            style <== when (hover) choose Styles.eqHoverStyle otherwise Styles.eqStyle
             center = new ASTRenderer(expr)
             minWidth <== scrollPane.width
           }
 
           box.children.add(child)
+          Platform.runLater { scrollPane.vvalue = 1.0 }
         }
       }
 
