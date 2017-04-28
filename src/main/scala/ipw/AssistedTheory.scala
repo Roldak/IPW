@@ -30,17 +30,13 @@ trait AssistedTheory
     openAssistantWindow(choosingEnd)
 
     @tailrec
-    def deepen(step: Expr, rhs: Expr, accumulatedProof: Theorem): Attempt[Theorem] = {
-      println("CURRENT STEP: " + step)
-      
+    def deepen(step: Expr, rhs: Expr, accumulatedProof: Theorem): Attempt[Theorem] = {      
       prove(step === rhs) match {
         case thm @ Success(_) => prove(lhs === rhs, accumulatedProof, thm)
         case _ =>
           val suggestions = analyse(step)
           
           suggestingEnd.write((suggestions, step))
-
-          println("Suggestions: " + suggestions + " : ")
 
           val choice = suggestingEnd.read //if (suggestions.isEmpty) Pass else suggestions.head //chooseAmong(suggestions, source)
 

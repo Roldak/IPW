@@ -48,7 +48,7 @@ trait AssistantWindow extends Rendering { theory: AssistedTheory =>
 
   def openAssistantWindow(choosingEnd: ChoosingEnd) = {
     Platform.runLater {
-      val lv = new ObservableBuffer[Suggestion]
+      val suggestionBuffer = new ObservableBuffer[Suggestion]
       val box = new VBox
       val scrollPane = new ScrollPane {
         content = box
@@ -69,10 +69,10 @@ trait AssistantWindow extends Rendering { theory: AssistedTheory =>
             right = new BorderPane {
               padding = Insets(10, 0, 10, 5)
               center = new ListView[Suggestion] {
-                items = lv
+                items = suggestionBuffer
                 cellFactory = TextFieldListCell.forListView(StringConverter.toStringConverter[Suggestion](s => s.descr))
                 selectionModel().selectedItem.onChange { (_, _, newValue) =>
-                  if (newValue != null) {
+                  if (newValue != null) { // is null when clearSelection() triggers onChange
                     choosingEnd.write(newValue)
                     Platform.runLater { selectionModel().clearSelection() }
                   }
@@ -86,8 +86,8 @@ trait AssistantWindow extends Rendering { theory: AssistedTheory =>
       asyncForever {
         val (suggs, expr) = choosingEnd.read
         Platform.runLater {
-          lv.clear()
-          lv ++= suggs
+          suggestionBuffer.clear()
+          suggestionBuffer ++= suggs
 
           val child = new BorderPane {
             padding = Insets(10)

@@ -102,10 +102,10 @@ trait Rendering { theory: AssistedTheory =>
         buildFlow(e) ++ Seq(Dot, Code.Identifier(id.toString))
         
       case IsInstanceOf(e, tp) =>
-        Seq(OpeningBracket) ++ buildFlow(e) ++ Seq(Code.Keyword(" is "), Code.Type(prettyPrint(tp, PrinterOptions())), ClosingBracket)
+        buildFlow(e) ++ Seq(Dot, Code.Keyword("is"), OpeningSquareBracket, Code.Type(prettyPrint(tp, PrinterOptions())), ClosingSquareBracket)
         
       case AsInstanceOf(e, tp) =>
-        Seq(OpeningBracket) ++ buildFlow(e) ++ Seq(Code.Keyword(" as "), Code.Type(prettyPrint(tp, PrinterOptions())), ClosingBracket)
+        buildFlow(e) ++ Seq(Dot, Code.Keyword("as"), OpeningSquareBracket, Code.Type(prettyPrint(tp, PrinterOptions())), ClosingSquareBracket)
         
       case IfExpr(cond, then, elze) =>
         Seq(Code.Keyword("if "), OpeningBracket) ++ buildFlow(cond) ++ Seq(ClosingBracket, Code.Space, OpeningBrace, Code.LineBreak,
