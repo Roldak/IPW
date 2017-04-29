@@ -11,7 +11,7 @@ import scalafx.scene.paint.Color
 import scala.language.postfixOps
 import javafx.event._
 import javafx.scene.input.MouseEvent
-import scalafx.beans.property.ObjectProperty
+import scalafx.scene.Node
 
 protected[gui] object Consts {
   def OpeningBracket = Code.Operator("(")
@@ -28,9 +28,13 @@ protected[gui] object Consts {
 }
 
 protected[gui] object Code {
-  class Node(text: String) extends Text(text) {
+  class Node(text: String) extends Text(text) { self =>
     var expression: Expr = null
+    var neighbors: Seq[Node] = null
     
+    private var finalized = false
+    private var resetState: () => Unit = null
+
     def withFont(f: Font) = {
       font = f
       this
@@ -43,8 +47,35 @@ protected[gui] object Code {
       onMouseMoved = handle { println(str) }
       this
     }
-    onMouseClicked = handle {
-      println(expression)
+    
+    def finalize(exp: Expr, neighborz: Seq[Node]) = {
+      expression = exp
+      neighbors = neighborz
+      resetState = new Function0[Unit] {
+        val font = self.font.value
+        val fill = self.fill.value
+        val style = self.style.value
+        val underline = self.underline.value
+
+        def apply() = {
+          self.font = font
+          self.fill = fill
+          self.style = style
+          self.underline = underline
+        }
+      }
+      finalized = true
+    }
+    
+    def isFinalized = finalized
+
+    onMouseEntered = handle {
+      neighbors.foreach { n =>
+        n.underline = true
+      }
+    }
+    onMouseExited = handle {
+      neighbors.foreach(_.resetState())
     }
   }
 
@@ -138,12 +169,7 @@ trait Rendering { theory: AssistedTheory =>
 
   protected def buildFlow(e: Expr)(implicit ctx: FlowContext): Seq[Code.Node] = {
     val nodes = buildFlowImpl(e)(ctx withParent e)
-    nodes.foreach { n =>
-      println(n.expression)
-      if (n.expression == null) {
-        n.expression = e
-      }
-    }
+    nodes filter { !_.isFinalized } foreach { _.finalize(e, nodes) }
     nodes
   }
 
