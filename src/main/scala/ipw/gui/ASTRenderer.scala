@@ -7,6 +7,7 @@ import inox._
 import inox.trees._
 import inox.trees.dsl._
 import scalafx.scene.paint.Color
+import scala.language.postfixOps
 
 
 protected[gui] object Consts {
@@ -48,7 +49,6 @@ protected[gui] object Code {
   def LineBreak = Raw("\n")
   def Indent(n: Int) = Raw("  " * n)
 }
-protected[gui] class Keyword
 
 trait Rendering { theory: AssistedTheory =>  
   import Consts._

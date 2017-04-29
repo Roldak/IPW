@@ -22,8 +22,8 @@ trait AssistedTheory
 
   type ChoosingEnd = SynchronizedChannel.End[(Seq[Suggestion], Expr), Suggestion]
   type SuggestingEnd = SynchronizedChannel.End[Suggestion, (Seq[Suggestion], Expr)]
-      
-  def IPWprove(expr: Equals, source: JFile, thms: Map[String, Theorem]): Attempt[Theorem] = {
+
+  def IPWprove(expr: Equals, source: JFile, thms: Map[String, Theorem], ihs: Option[StructuralInductionHypotheses]): Attempt[Theorem] = {
     val Equals(lhs, rhs) = expr
     val (choosingEnd, suggestingEnd) = SynchronizedChannel[(Seq[Suggestion], Expr), Suggestion]()
     
@@ -34,7 +34,7 @@ trait AssistedTheory
       prove(step === rhs) match {
         case thm @ Success(_) => prove(lhs === rhs, accumulatedProof, thm)
         case _ =>
-          val suggestions = analyse(step)
+          val suggestions = analyse(step, thms, ihs)
           
           suggestingEnd.write((suggestions, step))
 
