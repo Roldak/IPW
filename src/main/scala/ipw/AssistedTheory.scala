@@ -27,7 +27,7 @@ trait AssistedTheory
     val Equals(lhs, rhs) = expr
     val (choosingEnd, suggestingEnd) = SynchronizedChannel[(Seq[Suggestion], Expr), Suggestion]()
     
-    openAssistantWindow(choosingEnd)
+    openAssistantWindow(choosingEnd, thms)
 
     @tailrec
     def deepen(step: Expr, rhs: Expr, accumulatedProof: Theorem): Attempt[Theorem] = {      

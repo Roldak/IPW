@@ -18,27 +18,10 @@ import scalafx.concurrent.Task
 import scalafx.scene.control.cell.TextFieldListCell
 import scalafx.util.StringConverter
 
-private[gui] object Styles {
-  val tfStyle = """
-      -fx-background-color: rgb(250, 250, 250);
-      -fx-border-color: black;
-      -fx-border-size: 1px;
-    """
-
-  val eqStyle = """
-      -fx-background-color: rgb(250, 250, 250);
-      -fx-border-color: black;
-      -fx-border-width: 0 0 1 0;
-    """
-
-  val eqHoverStyle = """
-      -fx-background-color: rgb(255, 255, 255);
-      -fx-border-color: rgb(30, 30, 90);
-      -fx-border-width: 0 0 1 0;
-    """
-}
-
-trait AssistantWindow extends Rendering { theory: AssistedTheory =>
+trait AssistantWindow 
+  extends Rendering
+    with Styles
+    with ExpressionPanes { theory: AssistedTheory =>
 
   Platform.implicitExit = false
 
@@ -52,29 +35,27 @@ trait AssistantWindow extends Rendering { theory: AssistedTheory =>
     while (true) f
   }
 
-  def openAssistantWindow(choosingEnd: ChoosingEnd) = {
+  def openAssistantWindow(choosingEnd: ChoosingEnd, thms: Map[String, Theorem]) = {
     Platform.runLater {
       val suggestionBuffer = new ObservableBuffer[Suggestion]
-      val box = new VBox
-      val scrollPane = new ScrollPane {
-        content = box
-      }
-
+      val expressionPane = new ExpressionPane
+      
       val dialogStage = new Stage { outer =>
         title = "IPW Assistant Window"
         width = 1024
         height = 768
-        scene = new Scene {
+        scene = new Scene { scene =>
           root = new BorderPane {
             padding = Insets(20)
             center = new BorderPane {
-              style = Styles.tfStyle
+              style = Style.tfStyle
               margin = Insets(10, 0, 10, 0)
-              center = scrollPane
+              center = expressionPane
+              prefWidth <== scene.width * 2 / 3
             }
             right = new BorderPane {
               padding = Insets(10, 0, 10, 5)
-              center = new ListView[Suggestion] {
+              top = new ListView[Suggestion] {
                 items = suggestionBuffer
                 cellFactory = TextFieldListCell.forListView(StringConverter.toStringConverter[Suggestion](s => s.descr))
                 selectionModel().selectedItem.onChange { (_, _, newValue) =>
@@ -84,6 +65,10 @@ trait AssistantWindow extends Rendering { theory: AssistedTheory =>
                   }
                 }
               }
+              center = new ExpressionPane {
+                thms.foreach {case (name, thm) => addElement(thm.expression)}
+              }
+              prefWidth <== scene.width * 1 / 3
             }
           }
         }
@@ -94,16 +79,7 @@ trait AssistantWindow extends Rendering { theory: AssistedTheory =>
         Platform.runLater {
           suggestionBuffer.clear()
           suggestionBuffer ++= suggs
-
-          val child = new BorderPane {
-            padding = Insets(10)
-            style <== when (hover) choose Styles.eqHoverStyle otherwise Styles.eqStyle
-            center = new ASTRenderer(expr)
-            minWidth <== scrollPane.width
-          }
-
-          box.children.add(child)
-          Platform.runLater { scrollPane.vvalue = 1.0 }
+          expressionPane.addElement(expr)
         }
       }
 
