@@ -22,6 +22,7 @@ protected[gui] object Consts {
   def ClosingBrace = Code.Operator("}")
   def CommaSpace = Code.Operator(", ")
   def Dot = Code.Operator(".")
+  def Colon = Code.Operator(":")
 
   lazy val ConsolasFont = Font.font("consolas", 13)
   lazy val ConsolasBoldFont = Font.font("consolas", FontWeight.Bold, 13)
@@ -110,6 +111,15 @@ trait Rendering { theory: AssistedTheory =>
 
   protected abstract class TextClickEvent extends EventHandler[MouseEvent]
 
+  protected def nary(exprs: Seq[Seq[Code.Node]], sep: String = ", ", init: String = "", closing: String = ""): Seq[Code.Node] = {
+    val initNode = if (init.isEmpty()) Seq() else Seq(Code.Operator(init))
+    val exprNodes = if (exprs.isEmpty) Seq() else exprs.init.flatMap(_ :+ Code.Operator(sep)) ++ exprs.last
+    val closingNode = if (closing.isEmpty()) Seq() else Seq(Code.Operator(closing))
+    initNode ++ exprNodes ++ closingNode
+  }
+  
+  protected def typeNode(tpe: Type): Seq[Code.Node] = Seq(Code.Type(prettyPrint(tpe, PrinterOptions())))
+  
   protected def buildFlowImpl(e: Expr)(implicit ctx: FlowContext): Seq[Code.Node] = e match {
     case FractionLiteral(a, b)         => Seq(Code.Literal(a.toString), Code.Operator("/"), Code.Literal(b.toString))
 
@@ -120,37 +130,22 @@ trait Rendering { theory: AssistedTheory =>
     case Variable(v, _, _)             => Seq(Code.Identifier(v.toString))
 
     case FunctionInvocation(f, tps, args) =>
-      val btps = tps map (tp => Code.Type(prettyPrint(tp, PrinterOptions())))
-      val bargs = args map buildFlow
-      (Seq(Code.Identifier(f.toString), OpeningSquareBracket) ++
-        (if (tps.isEmpty) Seq() else btps.init.flatMap(Seq(_, CommaSpace)) :+ btps.last) :+
-        ClosingSquareBracket :+ OpeningBracket) ++
-        (if (bargs.isEmpty) Seq() else bargs.init.flatMap(_ :+ CommaSpace) ++ bargs.last) :+
-        ClosingBracket
+      Seq(Code.Identifier(f.toString)) ++ nary(tps map typeNode, ", ", "[", "]") ++ nary(args map buildFlow, ", ", "(", ")")
 
     case ADT(ADTType(id, tps), args) =>
-      val btps = tps map (tp => Code.Type(prettyPrint(tp, PrinterOptions())))
-      val bargs = args map buildFlow
-      (Seq(Code.ADTType(id.toString), OpeningSquareBracket) ++
-        (if (tps.isEmpty) Seq() else btps.init.flatMap(Seq(_, CommaSpace)) :+ btps.last) :+
-        ClosingSquareBracket :+ OpeningBracket) ++
-        (if (bargs.isEmpty) Seq() else bargs.init.flatMap(_ :+ CommaSpace) ++ bargs.last) :+
-        ClosingBracket
+      Seq(Code.ADTType(id.toString)) ++ nary(tps map typeNode, ", ", "[", "]") ++ nary(args map buildFlow, ", ", "(", ")")
 
     case Application(f, args) =>
-      val bargs = args map buildFlow
-      Seq(Code.Identifier(f.toString), OpeningBracket) ++
-        (if (bargs.isEmpty) Seq() else bargs.init.flatMap(_ :+ CommaSpace) ++ bargs.last) :+
-        ClosingBracket
+      Seq(Code.Identifier(f.toString)) ++ nary(args map buildFlow, ", ", "(", ")")
 
     case ADTSelector(e, id) =>
       buildFlow(e) ++ Seq(Dot, Code.Identifier(id.toString))
 
     case IsInstanceOf(e, tp) =>
-      buildFlow(e) ++ Seq(Dot, Code.Keyword("is"), OpeningSquareBracket, Code.Type(prettyPrint(tp, PrinterOptions())), ClosingSquareBracket)
+      buildFlow(e) ++ Seq(Dot, Code.Keyword("is"), OpeningSquareBracket) ++ typeNode(tp) :+ ClosingSquareBracket
 
     case AsInstanceOf(e, tp) =>
-      buildFlow(e) ++ Seq(Dot, Code.Keyword("as"), OpeningSquareBracket, Code.Type(prettyPrint(tp, PrinterOptions())), ClosingSquareBracket)
+      buildFlow(e) ++ Seq(Dot, Code.Keyword("as"), OpeningSquareBracket) ++ typeNode(tp) :+ ClosingSquareBracket
 
     case IfExpr(cond, then, elze) =>
       Seq(Code.Keyword("if "), OpeningBracket) ++ buildFlow(cond) ++ Seq(ClosingBracket, Code.Space, OpeningBrace, Code.LineBreak,
@@ -158,13 +153,12 @@ trait Rendering { theory: AssistedTheory =>
           Code.Indent(ctx.indent), ClosingBrace, Code.Keyword(" else "), OpeningBrace, Code.LineBreak,
           Code.Indent(ctx.indent + 1)) ++ buildFlow(elze)(ctx indented) ++ Seq(Code.LineBreak,
             Code.Indent(ctx.indent), ClosingBrace)
+            
+    case Forall(vals, expr) => 
+      Seq(Code.Operator("\u2200")) ++ nary(vals.map { v => Seq(Code.Identifier(v.id.toString), Colon) ++ typeNode(v.tpe) }) ++ Seq(Dot) ++ buildFlow(expr)
 
-    case other =>
-      val Operator(exprs, _) = e
-      val subexprs = exprs map buildFlow
-      Seq(Code.TreeName(other.getClass.getSimpleName), OpeningBracket) ++
-        (if (subexprs.isEmpty) Seq() else subexprs.init.flatMap(_ :+ CommaSpace) ++ subexprs.last) :+
-        ClosingBracket
+    case Operator(exprs, _) =>
+      Seq(Code.TreeName(e.getClass.getSimpleName)) ++ nary(exprs map buildFlow, ", ", "(", ")")
   }
 
   protected def buildFlow(e: Expr)(implicit ctx: FlowContext): Seq[Code.Node] = {
