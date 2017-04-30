@@ -12,27 +12,28 @@ import scala.language.postfixOps
 import javafx.event._
 import javafx.scene.input.MouseEvent
 import scalafx.scene.Node
+import scalafx.scene.paint.Paint
 
 protected[gui] object Consts {
-  def OpeningBracket = Code.Operator("(")
-  def ClosingBracket = Code.Operator(")")
-  def OpeningSquareBracket = Code.Operator("[")
-  def ClosingSquareBracket = Code.Operator("]")
-  def OpeningBrace = Code.Operator("{")
-  def ClosingBrace = Code.Operator("}")
-  def CommaSpace = Code.Operator(", ")
-  def Dot = Code.Operator(".")
-  def Colon = Code.Operator(":")
+  def OpeningBracket(implicit ctx: FlowContext) = Code.Operator("(")
+  def ClosingBracket(implicit ctx: FlowContext) = Code.Operator(")")
+  def OpeningSquareBracket(implicit ctx: FlowContext) = Code.Operator("[")
+  def ClosingSquareBracket(implicit ctx: FlowContext) = Code.Operator("]")
+  def OpeningBrace(implicit ctx: FlowContext) = Code.Operator("{")
+  def ClosingBrace(implicit ctx: FlowContext) = Code.Operator("}")
+  def CommaSpace(implicit ctx: FlowContext) = Code.Operator(", ")
+  def Dot(implicit ctx: FlowContext) = Code.Operator(".")
+  def Colon(implicit ctx: FlowContext) = Code.Operator(":")
 
-  lazy val ConsolasFont = Font.font("consolas", 13)
-  lazy val ConsolasBoldFont = Font.font("consolas", FontWeight.Bold, 13)
+  def ConsolasFont(implicit ctx: FlowContext) = Font.font("consolas", ctx.fontSize)
+  def ConsolasBoldFont(implicit ctx: FlowContext) = Font.font("consolas", FontWeight.Bold, ctx.fontSize)
 }
 
 protected[gui] object Code {
   class Node(text: String) extends Text(text) { self =>
     var expression: Expr = null
     var neighbors: Seq[Node] = null
-    
+
     private var finalized = false
     private var resetState: () => Unit = null
 
@@ -48,7 +49,7 @@ protected[gui] object Code {
       onMouseMoved = handle { println(str) }
       this
     }
-    
+
     def finalize(exp: Expr, neighborz: Seq[Node]) = {
       expression = exp
       neighbors = neighborz
@@ -67,7 +68,7 @@ protected[gui] object Code {
       }
       finalized = true
     }
-    
+
     def isFinalized = finalized
 
     onMouseEntered = handle {
@@ -80,18 +81,23 @@ protected[gui] object Code {
     }
   }
 
-  private def Raw(text: String) = new Node(text) withFont Consts.ConsolasFont
+  private def Raw(text: String)(implicit ctx: FlowContext) = new Node(text) withFont Consts.ConsolasFont
 
-  def Operator(text: String) = Raw(text) withColor Black
-  def TreeName(text: String) = Raw(text) withColor rgb(181, 58, 103)
-  def Literal(text: String) = Raw(text) withColor rgb(226, 160, 255)
-  def Identifier(text: String) = Raw(text) withColor rgb(94, 94, 255)
-  def Type(text: String) = Raw(text) withColor Black
-  def ADTType(text: String) = Raw(text) withColor rgb(210, 87, 0) withFont Consts.ConsolasBoldFont
-  def Keyword(text: String) = Raw(text) withColor rgb(193, 58, 85) withFont Consts.ConsolasBoldFont
-  def Space = Raw(" ")
-  def LineBreak = Raw("\n")
-  def Indent(n: Int) = Raw("  " * n)
+  def Operator(text: String)(implicit ctx: FlowContext) = Raw(text) withColor Black
+  def TreeName(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(181, 58, 103)
+  def Literal(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(226, 160, 255)
+  def Identifier(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(94, 94, 255)
+  def Type(text: String)(implicit ctx: FlowContext) = Raw(text) withColor Black
+  def ADTType(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(210, 87, 0) withFont Consts.ConsolasBoldFont
+  def Keyword(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(193, 58, 85) withFont Consts.ConsolasBoldFont
+  def Space(implicit ctx: FlowContext) = Raw(" ")
+  def LineBreak(implicit ctx: FlowContext) = Raw("\n")
+  def Indent(n: Int)(implicit ctx: FlowContext) = Raw("  " * n)
+}
+
+protected[gui] case class FlowContext(indent: Int, parents: List[Expr], fontSize: Double) {
+  def indented = FlowContext(indent + 1, parents, fontSize)
+  def withParent(e: Expr) = FlowContext(indent, e :: parents, fontSize)
 }
 
 trait Rendering { theory: AssistedTheory =>
@@ -104,22 +110,17 @@ trait Rendering { theory: AssistedTheory =>
     }
   }
 
-  protected case class FlowContext(indent: Int, parents: List[Expr]) {
-    def indented = FlowContext(indent + 1, parents)
-    def withParent(e: Expr) = FlowContext(indent, e :: parents)
-  }
-
   protected abstract class TextClickEvent extends EventHandler[MouseEvent]
 
-  protected def nary(exprs: Seq[Seq[Code.Node]], sep: String = ", ", init: String = "", closing: String = ""): Seq[Code.Node] = {
+  protected def nary(exprs: Seq[Seq[Code.Node]], sep: String = ", ", init: String = "", closing: String = "")(implicit ctx: FlowContext): Seq[Code.Node] = {
     val initNode = if (init.isEmpty()) Seq() else Seq(Code.Operator(init))
     val exprNodes = if (exprs.isEmpty) Seq() else exprs.init.flatMap(_ :+ Code.Operator(sep)) ++ exprs.last
     val closingNode = if (closing.isEmpty()) Seq() else Seq(Code.Operator(closing))
     initNode ++ exprNodes ++ closingNode
   }
-  
-  protected def typeNode(tpe: Type): Seq[Code.Node] = Seq(Code.Type(prettyPrint(tpe, PrinterOptions())))
-  
+
+  protected def typeNode(tpe: Type)(implicit ctx: FlowContext): Seq[Code.Node] = Seq(Code.Type(prettyPrint(tpe, PrinterOptions())))
+
   protected def buildFlowImpl(e: Expr)(implicit ctx: FlowContext): Seq[Code.Node] = e match {
     case FractionLiteral(a, b)         => Seq(Code.Literal(a.toString), Code.Operator("/"), Code.Literal(b.toString))
 
@@ -153,8 +154,8 @@ trait Rendering { theory: AssistedTheory =>
           Code.Indent(ctx.indent), ClosingBrace, Code.Keyword(" else "), OpeningBrace, Code.LineBreak,
           Code.Indent(ctx.indent + 1)) ++ buildFlow(elze)(ctx indented) ++ Seq(Code.LineBreak,
             Code.Indent(ctx.indent), ClosingBrace)
-            
-    case Forall(vals, expr) => 
+
+    case Forall(vals, expr) =>
       Seq(Code.Operator("\u2200")) ++ nary(vals.map { v => Seq(Code.Identifier(v.id.toString), Colon) ++ typeNode(v.tpe) }) ++ Seq(Dot) ++ buildFlow(expr)
 
     case Operator(exprs, _) =>
@@ -167,7 +168,7 @@ trait Rendering { theory: AssistedTheory =>
     nodes
   }
 
-  class ASTRenderer(expr: Expr) extends TextFlow {
-    children = buildFlow(expr)(FlowContext(0, Nil))
+  class ASTRenderer(expr: Expr, fontSize: Double) extends TextFlow {
+    children = buildFlow(expr)(FlowContext(0, Nil, fontSize))
   }
 }

@@ -12,11 +12,11 @@ import scalafx.geometry.Insets
 import scalafx.application.Platform
 
 protected[gui] trait ExpressionPanes { window: AssistantWindow =>
-  class ExpressionPane extends ScrollPane { scrollPane =>
+  class ExpressionPane(val expressionFontSize: Double) extends ScrollPane { scrollPane =>
     case class Element(expr: Expr) extends BorderPane {
       padding = Insets(10)
       style <== when (hover) choose Style.eqHoverStyle otherwise Style.eqStyle
-      center = new ASTRenderer(expr)
+      center = new ASTRenderer(expr, expressionFontSize)
       minWidth <== scrollPane.width
     }
 

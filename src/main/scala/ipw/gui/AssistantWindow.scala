@@ -38,20 +38,20 @@ trait AssistantWindow
   def openAssistantWindow(choosingEnd: ChoosingEnd, thms: Map[String, Theorem]) = {
     Platform.runLater {
       val suggestionBuffer = new ObservableBuffer[Suggestion]
-      val expressionPane = new ExpressionPane
+      val expressionPane = new ExpressionPane(14)
       
       val dialogStage = new Stage { outer =>
         title = "IPW Assistant Window"
         width = 1024
         height = 768
-        scene = new Scene { scene =>
-          root = new BorderPane {
+        scene = new Scene {
+          root = new BorderPane { window =>
             padding = Insets(20)
             center = new BorderPane {
               style = Style.tfStyle
               margin = Insets(10, 0, 10, 0)
               center = expressionPane
-              prefWidth <== scene.width * 2 / 3
+              prefWidth <== window.width * 2 / 3
             }
             right = new BorderPane {
               padding = Insets(10, 0, 10, 5)
@@ -65,10 +65,10 @@ trait AssistantWindow
                   }
                 }
               }
-              center = new ExpressionPane {
+              center = new ExpressionPane(12) {
                 thms.foreach {case (name, thm) => addElement(thm.expression)}
               }
-              prefWidth <== scene.width * 1 / 3
+              prefWidth <== window.width * 1 / 3
             }
           }
         }
