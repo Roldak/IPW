@@ -20,37 +20,39 @@ trait AssistedTheory
     with Suggestions
     with AssistantWindow { self =>
 
-  type ChoosingEnd = SynchronizedChannel.End[(Seq[Suggestion], Expr), Suggestion]
-  type SuggestingEnd = SynchronizedChannel.End[Suggestion, (Seq[Suggestion], Expr)]
+  type ProofState = (Expr, Seq[Suggestion], Map[String, Theorem])
+  type UpdateStep = Suggestion
+  type ChoosingEnd = SynchronizedChannel.End[ProofState, UpdateStep]
+  type SuggestingEnd = SynchronizedChannel.End[UpdateStep, ProofState]
 
-  def IPWprove(expr: Equals, source: JFile, thms: Map[String, Theorem], ihs: Option[StructuralInductionHypotheses]): Attempt[Theorem] = {
+  def IPWprove(expr: Equals, source: JFile, thms: Map[String, Theorem], ihs: Option[StructuralInductionHypotheses] = None): Attempt[Theorem] = {
     val Equals(lhs, rhs) = expr
-    val (choosingEnd, suggestingEnd) = SynchronizedChannel[(Seq[Suggestion], Expr), Suggestion]()
+    val (choosingEnd, suggestingEnd) = SynchronizedChannel[ProofState, UpdateStep]()
     
-    openAssistantWindow(choosingEnd, thms)
+    openAssistantWindow(choosingEnd)
 
     @tailrec
-    def deepen(step: Expr, rhs: Expr, accumulatedProof: Theorem): Attempt[Theorem] = {      
+    def deepen(step: Expr, rhs: Expr, accumulatedProof: Theorem, thms: Map[String, Theorem]): Attempt[Theorem] = {      
       prove(step === rhs) match {
         case thm @ Success(_) => prove(lhs === rhs, accumulatedProof, thm)
         case _ =>
-          val suggestions = analyse(step, thms, ihs)
+          val (suggestions, newThms) = analyse(step, thms, ihs)
           
-          suggestingEnd.write((suggestions, step))
+          suggestingEnd.write((step, suggestions, newThms))
 
           val choice = suggestingEnd.read
 
           choice(step) match {
             case Success((next, stepProof)) => 
-              deepen(next, rhs, prove(lhs === next, accumulatedProof, stepProof))
+              deepen(next, rhs, prove(lhs === next, accumulatedProof, stepProof), newThms)
               
             case Failure(reason) =>
               println("Error while applying suggestion: " + reason)
-              deepen(step, rhs, accumulatedProof) // try again
+              deepen(step, rhs, accumulatedProof, thms) // try again
           }
       }
     }
 
-    deepen(lhs, rhs, truth)
+    deepen(lhs, rhs, truth, thms)
   }
 }

@@ -35,15 +35,16 @@ trait AssistantWindow
     while (true) f
   }
 
-  def openAssistantWindow(choosingEnd: ChoosingEnd, thms: Map[String, Theorem]) = {
+  def openAssistantWindow(choosingEnd: ChoosingEnd) = {
     Platform.runLater {
       val suggestionBuffer = new ObservableBuffer[Suggestion]
       val expressionPane = new ExpressionPane(14)
+      val theoremPane = new ExpressionPane(12)
       
       val dialogStage = new Stage { outer =>
         title = "IPW Assistant Window"
-        width = 1024
-        height = 768
+        width = 1350
+        height = 800
         scene = new Scene {
           root = new BorderPane { window =>
             padding = Insets(20)
@@ -65,9 +66,7 @@ trait AssistantWindow
                   }
                 }
               }
-              center = new ExpressionPane(12) {
-                thms.foreach {case (name, thm) => addElement(thm.expression)}
-              }
+              center = theoremPane
               prefWidth <== window.width * 1 / 3
             }
           }
@@ -75,11 +74,15 @@ trait AssistantWindow
       }
 
       asyncForever {
-        val (suggs, expr) = choosingEnd.read
+        val (expr, suggs, thms) = choosingEnd.read
         Platform.runLater {
+          expressionPane.addElement(expr)
+          
           suggestionBuffer.clear()
           suggestionBuffer ++= suggs
-          expressionPane.addElement(expr)
+          
+          theoremPane.clear
+          thms foreach {case (name, thm) => theoremPane.addElement(thm.expression)}
         }
       }
 

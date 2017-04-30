@@ -13,20 +13,24 @@ import scalafx.application.Platform
 
 protected[gui] trait ExpressionPanes { window: AssistantWindow =>
   class ExpressionPane(val expressionFontSize: Double) extends ScrollPane { scrollPane =>
-    case class Element(expr: Expr) extends BorderPane {
+    case class Element(expr: Expr, callback: () => Unit) extends BorderPane {
       padding = Insets(10)
       style <== when (hover) choose Style.eqHoverStyle otherwise Style.eqStyle
       center = new ASTRenderer(expr, expressionFontSize)
-      minWidth <== scrollPane.width
+      minWidth <== scrollPane.width - 2
+      
+      onMouseClicked = handle(callback())
     }
 
-    val box = new VBox
+    private val box = new VBox
     
     content = box
     
-    def addElement(expr: Expr): Unit = {
-      box.children.add(Element(expr))
+    def addElement(expr: Expr, onClick: () => Unit = () => {}): Unit = {
+      box.children.add(Element(expr, onClick))
       Platform.runLater { scrollPane.vvalue = 1.0 }
     }
+    
+    def clear: Unit = box.children.clear()
   }
 }
