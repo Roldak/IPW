@@ -24,9 +24,12 @@ protected[gui] object Consts {
   def CommaSpace(implicit ctx: FlowContext) = Code.Operator(", ")
   def Dot(implicit ctx: FlowContext) = Code.Operator(".")
   def Colon(implicit ctx: FlowContext) = Code.Operator(":")
+  def Space(implicit ctx: FlowContext) = Code.Operator(" ")
+  def LineBreak(implicit ctx: FlowContext) = Code.Operator("\n")
 
   def ConsolasFont(implicit ctx: FlowContext) = Font.font("consolas", ctx.fontSize)
   def ConsolasBoldFont(implicit ctx: FlowContext) = Font.font("consolas", FontWeight.Bold, ctx.fontSize)
+  def ConsolasItalicFont(implicit ctx: FlowContext) = Font.font("consolas", FontPosture.Italic, ctx.fontSize)
 }
 
 protected[gui] object Code {
@@ -45,8 +48,8 @@ protected[gui] object Code {
       fill = c
       this
     }
-    def withTest(str: String) = {
-      onMouseMoved = handle { println(str) }
+    def withUnderline = {
+      underline = true
       this
     }
 
@@ -87,17 +90,17 @@ protected[gui] object Code {
   def TreeName(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(181, 58, 103)
   def Literal(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(226, 160, 255)
   def Identifier(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(94, 94, 255)
+  def BoundVar(text: String)(implicit ctx: FlowContext) = Raw(text) withColor Color.DarkGray withFont Consts.ConsolasItalicFont
   def Type(text: String)(implicit ctx: FlowContext) = Raw(text) withColor Black
   def ADTType(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(210, 87, 0) withFont Consts.ConsolasBoldFont
   def Keyword(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(193, 58, 85) withFont Consts.ConsolasBoldFont
-  def Space(implicit ctx: FlowContext) = Raw(" ")
-  def LineBreak(implicit ctx: FlowContext) = Raw("\n")
   def Indent(n: Int)(implicit ctx: FlowContext) = Raw("  " * n)
 }
 
-protected[gui] case class FlowContext(indent: Int, parents: List[Expr], fontSize: Double) {
-  def indented = FlowContext(indent + 1, parents, fontSize)
-  def withParent(e: Expr) = FlowContext(indent, e :: parents, fontSize)
+protected[gui] case class FlowContext(indent: Int, parents: List[Expr], boundVars: Set[ValDef], fontSize: Double) {
+  def indented = FlowContext(indent + 1, parents, boundVars, fontSize)
+  def withParent(e: Expr) = FlowContext(indent, e :: parents, boundVars, fontSize)
+  def withBoundVars(v: Iterable[ValDef]) = FlowContext(indent, parents, boundVars ++ v, fontSize)
 }
 
 trait Rendering { theory: AssistedTheory =>
@@ -120,15 +123,18 @@ trait Rendering { theory: AssistedTheory =>
   }
 
   protected def typeNode(tpe: Type)(implicit ctx: FlowContext): Seq[Code.Node] = Seq(Code.Type(prettyPrint(tpe, PrinterOptions())))
+  
+  protected def block(stmt: Seq[Code.Node])(implicit ctx: FlowContext): Seq[Code.Node] =
+    Seq(OpeningBrace, LineBreak, Code.Indent(ctx.indent + 1)) ++ stmt ++ Seq(LineBreak, Code.Indent(ctx.indent), ClosingBrace)
 
   protected def buildFlowImpl(e: Expr)(implicit ctx: FlowContext): Seq[Code.Node] = e match {
     case FractionLiteral(a, b)         => Seq(Code.Literal(a.toString), Code.Operator("/"), Code.Literal(b.toString))
 
     case x: Literal[AnyRef] @unchecked => Seq(Code.Literal(x.value.toString))
 
-    case BinaryOperator(a, b, op)      => buildFlow(a) ++ Seq(Code.Operator(op)) ++ buildFlow(b)
+    case BinaryOperator(a, b, op)      => buildFlow(a) ++ Seq(Space, Code.Operator(op), Space) ++ buildFlow(b)
 
-    case Variable(v, _, _)             => Seq(Code.Identifier(v.toString))
+    case v @ Variable(id, _, _)        => Seq(if (ctx.boundVars contains v.toVal) Code.BoundVar(id.toString) else Code.Identifier(id.toString))
 
     case FunctionInvocation(f, tps, args) =>
       Seq(Code.Identifier(f.toString)) ++ nary(tps map typeNode, ", ", "[", "]") ++ nary(args map buildFlow, ", ", "(", ")")
@@ -149,14 +155,12 @@ trait Rendering { theory: AssistedTheory =>
       buildFlow(e) ++ Seq(Dot, Code.Keyword("as"), OpeningSquareBracket) ++ typeNode(tp) :+ ClosingSquareBracket
 
     case IfExpr(cond, then, elze) =>
-      Seq(Code.Keyword("if "), OpeningBracket) ++ buildFlow(cond) ++ Seq(ClosingBracket, Code.Space, OpeningBrace, Code.LineBreak,
-        Code.Indent(ctx.indent + 1)) ++ buildFlow(then)(ctx indented) ++ Seq(Code.LineBreak,
-          Code.Indent(ctx.indent), ClosingBrace, Code.Keyword(" else "), OpeningBrace, Code.LineBreak,
-          Code.Indent(ctx.indent + 1)) ++ buildFlow(elze)(ctx indented) ++ Seq(Code.LineBreak,
-            Code.Indent(ctx.indent), ClosingBrace)
+      Seq(Code.Keyword("if"), Space, OpeningBracket) ++ buildFlow(cond) ++ Seq(ClosingBracket, Space) ++ 
+        block(buildFlow(then)(ctx indented)) ++ Seq(Code.Keyword(" else ")) ++ block(buildFlow(elze)(ctx indented))
 
     case Forall(vals, expr) =>
-      Seq(Code.Operator("\u2200")) ++ nary(vals.map { v => Seq(Code.Identifier(v.id.toString), Colon) ++ typeNode(v.tpe) }) ++ Seq(Dot) ++ buildFlow(expr)
+      Seq(Code.Operator("\u2200")) ++ nary(vals.map { v => Seq(Code.BoundVar(v.id.toString), Colon) ++ 
+        typeNode(v.tpe) }) ++ Seq(Dot, Space) ++ buildFlow(expr)(ctx withBoundVars(vals))
 
     case Operator(exprs, _) =>
       Seq(Code.TreeName(e.getClass.getSimpleName)) ++ nary(exprs map buildFlow, ", ", "(", ")")
@@ -169,6 +173,6 @@ trait Rendering { theory: AssistedTheory =>
   }
 
   class ASTRenderer(expr: Expr, fontSize: Double) extends TextFlow {
-    children = buildFlow(expr)(FlowContext(0, Nil, fontSize))
+    children = buildFlow(expr)(FlowContext(0, Nil, Set.empty, fontSize))
   }
 }
