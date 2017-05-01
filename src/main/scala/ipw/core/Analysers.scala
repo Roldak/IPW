@@ -112,6 +112,10 @@ trait Analysers { theory: AssistedTheory =>
     case _          => None
   }
 
+  protected object TheoremWithExpression {
+    def unapply(thm: Theorem): Option[(Theorem, Expr)] = Some((thm, thm.expression))
+  }
+
   def followPath(thm: Theorem, path: Path, subst: Map[Variable, Expr]): Option[Theorem] = path match {
     case NotE(next)              => followPath(notE(thm), next, subst)
     case AndE(i, next)           => followPath(andE(thm)(i), next, subst)
@@ -128,24 +132,17 @@ trait Analysers { theory: AssistedTheory =>
       case _ => Seq()
     })
 
-    // TODO: make that readable maybe...
-    collectPreorder { exp =>
+    collectPreorderWithPath { (exp, exPath) =>
       concls flatMap {
         case (pattern, from, to, freeVars, path) =>
           unify(exp, pattern, freeVars) match {
-            case Some(subst) => followPath(thm, path, subst).map { thm =>
-              val eq @ Equals(_, _) = thm.expression
-              val res = postMap {
-                case e if e == from(eq) => Some(to(eq))
-                case _                  => None
-              }(expr)
-
-              (from(eq), res, thm)
+            case Some(subst) => followPath(thm, path, subst).map {
+              case TheoremWithExpression(thm, eq @ Equals(_, _)) => (from(eq), replaceTreeWithPath(expr, exPath, to(eq)), thm)
             }.toSeq
             case _ => Seq()
           }
       }
-    }(expr)
+    }(expr).groupBy(x => (x._1, x._2)).map(_._2.head).toSeq
   }
 
   def findTheoremApplications(expr: Expr, thms: Map[String, Theorem]): Seq[Suggestion] = {
