@@ -18,8 +18,8 @@ import scalafx.concurrent.Task
 import scalafx.scene.control.cell.TextFieldListCell
 import scalafx.util.StringConverter
 
-trait AssistantWindow 
-  extends Rendering
+trait AssistantWindow
+    extends Rendering
     with Styles
     with ExpressionPanes
     with Modes { theory: AssistedTheory =>
@@ -41,7 +41,13 @@ trait AssistantWindow
       val suggestionBuffer = new ObservableBuffer[(String, Seq[Suggestion])]
       val expressionPane = new ExpressionPane(14)
       val theoremPane = new ExpressionPane(12)
-      
+
+      def onSelectSuggestion(s: Suggestion) = () => {
+        choosingEnd.write(s)
+        expressionPane.installMode(Default)
+        Platform.runLater { suggestionBuffer.clear() }
+      }
+
       val dialogStage = new Stage { outer =>
         title = "IPW Assistant Window"
         width = 1350
@@ -64,13 +70,12 @@ trait AssistantWindow
                   if (newValue != null) { // is null when suggestionBuffer.clear() triggers onChange
                     if (newValue._2.size > 1) {
                       val validSuggs = newValue._2 flatMap {
-                        case s @ ExprTransformingSuggestion(expr) => Seq((expr, () => {}))
+                        case s @ ExprTransformingSuggestion(expr) => Seq((expr, onSelectSuggestion(s)))
                         case _ => Seq()
                       }
                       expressionPane.installMode(SelectingInExpression(expressionPane.lastRenderer, validSuggs))
                     } else {
-                      choosingEnd.write(newValue._2.head)
-                      Platform.runLater { suggestionBuffer.clear() }
+                      onSelectSuggestion(newValue._2.head)()
                     }
                   }
                 }
@@ -86,12 +91,12 @@ trait AssistantWindow
         val (expr, suggs, thms) = choosingEnd.read
         Platform.runLater {
           expressionPane.addElement(expr)
-          
+
           suggestionBuffer.clear()
           suggestionBuffer ++= suggs.groupBy(_.descr).toSeq
-          
+
           theoremPane.clear
-          thms foreach {case (name, thm) => theoremPane.addElement(thm.expression)}
+          thms foreach { case (name, thm) => theoremPane.addElement(thm.expression) }
         }
       }
 
