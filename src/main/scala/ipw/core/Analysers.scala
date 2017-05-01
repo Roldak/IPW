@@ -47,7 +47,6 @@ trait Analysers { theory: AssistedTheory =>
         exprs.zipWithIndex flatMap { case (e, i) => conclusionsOf(e) map (_.andE(i)) }
 
       case Forall(vals, body) =>
-        //vals.foldLeft(conclusionsOf(body))((paths: Seq[Conclusion], v: ValDef) => paths map (_.forallE(v)))
         conclusionsOf(body) map (_.forallE(vals))
 
       case Implies(assumption, rhs) =>
@@ -91,7 +90,7 @@ trait Analysers { theory: AssistedTheory =>
   def unify(expr: Expr, pattern: Expr, instantiableVars: Set[Variable]): Option[Map[Variable, Expr]] = (expr, pattern) match {
     case (ev: Variable, pv: Variable) if ev == pv     => Some(Map.empty)
 
-    case (expr, pv: Variable) if instantiableVars(pv) => Some(Map(pv -> expr))
+    case (expr, pv: Variable) if instantiableVars(pv) && expr.getType == pv.tpe => Some(Map(pv -> expr))
 
     case (expr, pattern) if expr.getClass == pattern.getClass =>
       val (evars, eexprs, etypes, ebuilder) = deconstructor.deconstruct(expr)
@@ -99,7 +98,8 @@ trait Analysers { theory: AssistedTheory =>
 
       if (evars.size == pvars.size &&
         eexprs.size == pexprs.size &&
-        etypes == ptypes) {
+        etypes == ptypes &&
+        evars.map(_.tpe) == pvars.map(_.tpe)) {
 
         val substs = pvars.zip(evars).toMap
         val subPexprs = pexprs.map(pexpr => replaceFromSymbols(substs, pexpr))
