@@ -61,7 +61,7 @@ trait Modes { window: AssistantWindow =>
       if (sel.size == 1) {
         sel.head._2 foreach (renderer.pane.PreviewBox.setExpr(_))
       } else {
-        renderer.pane.PreviewBox.setExprs(sel flatMap (_._2))
+        renderer.pane.PreviewBox.setExprs(sel flatMap (s => s._2 map (x => (x, s._3))))
       }
     }
 
@@ -76,7 +76,25 @@ trait Modes { window: AssistantWindow =>
     }
 
     override def onMouseClickedNode(node: Code.Node): Unit = {
-      selectables find (_._1 == node.expression) foreach (_._3())
+      //selectables find (_._1 == node.expression) foreach (_._3())
+      val sel = selectables filter (_._1 == node.expression)
+      if (sel.size == 1) {
+        sel.head._3()
+      } else {
+        renderer.pane.installMode(SelectingInPreview(renderer, sel map (x => (x._2, x._3))))
+      }
+    }
+  }
+  
+  protected[gui] case class SelectingInPreview(initial: ASTRenderer, selectables: Seq[(Option[Expr], () => Unit)]) extends InputMode {
+    override def onNewRenderer(r: ASTRenderer): Unit = {
+      r.codeNodes foreach { n =>
+        n.fill = Color.DarkGray
+      }
+      if (r == initial) { 
+        // to have it done only once...
+        r.pane.PreviewBox.setExprs(selectables flatMap (s => s._1 map (x => (x, s._2))))
+      }
     }
   }
 }

@@ -39,9 +39,9 @@ protected[gui] trait ExpressionPanes { window: AssistantWindow =>
         children = previewCache.getOrElseUpdate(expr, Element(expr, () => {}))
       }
       
-      def setExprs(exprs: Seq[Expr]): Unit = {
+      def setExprs(exprs: Seq[(Expr, () => Unit)]): Unit = {
         padding = Insets(0)
-        children = exprs map (e => Element(e, () => {}, Cursor.Hand))
+        children = exprs map (e => Element(e._1, e._2, Cursor.Hand))
       }
       
       def clear(): Unit = {
