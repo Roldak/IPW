@@ -37,7 +37,7 @@ trait AssistantWindow
 
   def openAssistantWindow(choosingEnd: ChoosingEnd) = {
     Platform.runLater {
-      val suggestionBuffer = new ObservableBuffer[Suggestion]
+      val suggestionBuffer = new ObservableBuffer[(String, Seq[Suggestion])]
       val expressionPane = new ExpressionPane(14)
       val theoremPane = new ExpressionPane(12)
       
@@ -56,12 +56,13 @@ trait AssistantWindow
             }
             right = new BorderPane {
               padding = Insets(10, 0, 10, 5)
-              top = new ListView[Suggestion] {
+              top = new ListView[(String, Seq[Suggestion])] {
                 items = suggestionBuffer
-                cellFactory = TextFieldListCell.forListView(StringConverter.toStringConverter[Suggestion](s => s.descr))
+                cellFactory = TextFieldListCell.forListView(StringConverter.toStringConverter[(String, Seq[Suggestion])](s => s._1 + s" (${s._2.size})"))
                 selectionModel().selectedItem.onChange { (_, _, newValue) =>
                   if (newValue != null) { // is null when suggestionBuffer.clear() triggers onChange
-                    choosingEnd.write(newValue)
+                    // TODO: next step!
+                    choosingEnd.write(newValue._2.head)
                     Platform.runLater { suggestionBuffer.clear() }
                   }
                 }
@@ -79,7 +80,7 @@ trait AssistantWindow
           expressionPane.addElement(expr)
           
           suggestionBuffer.clear()
-          suggestionBuffer ++= suggs
+          suggestionBuffer ++= suggs.groupBy(_.descr).toSeq
           
           theoremPane.clear
           thms foreach {case (name, thm) => theoremPane.addElement(thm.expression)}

@@ -72,23 +72,11 @@ trait Analysers { theory: AssistedTheory =>
       } else Set()
     }(e)
 
-    //println(thms map {case (_, thm) => conclusionsOf(thm.expression)})
-    import theory._
-    val tmp = Forall(Seq("x" :: IntegerType, "y" :: IntegerType),
-      Forall(Seq("z" :: IntegerType), (E("x") === E("y")) ==> (E("x") === E("z"))))
-
-    //theory.conclusionsOf(tmp) foreach println
-
-    val x = ("x" :: IntegerType)
-    val y = ("y" :: IntegerType)
-    val z = ("z" :: IntegerType).toVariable
-    println(theory.unify(Forall(Seq(x), x.toVariable === E(2)), Lambda(Seq(y), y.toVariable === z), Set(z)))
-
     thms.toMap
   }
 
   def unify(expr: Expr, pattern: Expr, instantiableVars: Set[Variable]): Option[Map[Variable, Expr]] = (expr, pattern) match {
-    case (ev: Variable, pv: Variable) if ev == pv     => Some(Map.empty)
+    case (ev: Variable, pv: Variable) if ev == pv                               => Some(Map.empty)
 
     case (expr, pv: Variable) if instantiableVars(pv) && expr.getType == pv.tpe => Some(Map(pv -> expr))
 
@@ -140,22 +128,20 @@ trait Analysers { theory: AssistedTheory =>
       case _ => Seq()
     })
 
-    println(s"conclusions for $thm:")
-    concls foreach println
-
+    // TODO: make that readable maybe...
     collectPreorder { exp =>
       concls flatMap {
         case (pattern, from, to, freeVars, path) =>
           unify(exp, pattern, freeVars) match {
-            case Some(subst) => followPath(thm, path, subst).map(thm => thm.expression match {
-              case eq: Equals =>
-                val res = postMap {
-                  case e if e == from(eq) => Some(to(eq))
-                  case _                  => None
-                }(expr)
+            case Some(subst) => followPath(thm, path, subst).map { thm =>
+              val eq @ Equals(_, _) = thm.expression
+              val res = postMap {
+                case e if e == from(eq) => Some(to(eq))
+                case _                  => None
+              }(expr)
 
-                (res, thm)
-            }).toSeq
+              (res, thm)
+            }.toSeq
             case _ => Seq()
           }
       }
