@@ -13,7 +13,7 @@ trait Modes { window: AssistantWindow =>
     def onNewRenderer(renderer: ASTRenderer): Unit = {}
     def onRemoveRenderer(renderer: ASTRenderer): Unit = {
       renderer.reset
-      renderer.pane.clearPreview
+      renderer.pane.PreviewBox.clear()
     }
 
     def onMouseEnteredNode(node: Code.Node): Unit = {}
@@ -51,12 +51,17 @@ trait Modes { window: AssistantWindow =>
     }
 
     override def onMouseEnteredNode(node: Code.Node): Unit = {
-      selectables find (_._1 == node.expression) foreach { s =>
+      val sel = selectables filter (_._1 == node.expression)
+      sel foreach { _ =>
         node.neighbors foreach { n =>
           n.underline = true
           n.cursor = Cursor.Hand
         }
-        s._2 foreach (renderer.pane.setPreviewExpr(_))
+      }
+      if (sel.size == 1) {
+        sel.head._2 foreach (renderer.pane.PreviewBox.setExpr(_))
+      } else {
+        renderer.pane.PreviewBox.setExprs(sel flatMap (_._2))
       }
     }
 
@@ -66,7 +71,7 @@ trait Modes { window: AssistantWindow =>
           n.underline = false
           n.cursor = Cursor.Default
         }
-        renderer.pane.clearPreview
+        renderer.pane.PreviewBox.clear
       }
     }
 

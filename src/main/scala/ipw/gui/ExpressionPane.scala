@@ -3,6 +3,8 @@ package ipw.gui
 import scalafx.Includes._
 import scalafx.scene.control.ScrollPane
 import scalafx.scene.layout.VBox
+import scalafx.scene.Node
+import scalafx.scene.Cursor
 import inox._
 import inox.trees._
 import inox.trees.dsl._
@@ -15,31 +17,36 @@ import scala.collection.mutable.{Map => MutableMap}
 
 protected[gui] trait ExpressionPanes { window: AssistantWindow =>
   class ExpressionPane(val expressionFontSize: Double) extends ScrollPane { scrollPane =>
-    case class Element(expr: Expr, callback: () => Unit) extends BorderPane {
+    case class Element(expr: Expr, callback: () => Unit, curs: Cursor = Cursor.Default) extends BorderPane {
       val renderer = new ASTRenderer(scrollPane, expr, expressionFontSize) 
       
       padding = Insets(10)
       style <== when (hover) choose Style.eqHoverStyle otherwise Style.eqStyle
       center = renderer
       minWidth <== scrollPane.width - 2
+      cursor = curs
       
       onMouseClicked = handle(callback())
     }
     
-    case object PreviewBox extends BorderPane {
-      private val previewCache = MutableMap[Expr, ASTRenderer]()
+    case object PreviewBox extends VBox {
+      private val previewCache = MutableMap[Expr, Node]()
       
-      style <== when (hover) choose Style.eqHoverStyle otherwise Style.eqStyle
       minWidth <== scrollPane.width - 2
       
       def setExpr(expr: Expr): Unit = {
         padding = Insets(10)
-        center = previewCache.getOrElseUpdate(expr, new ASTRenderer(scrollPane, expr, expressionFontSize))
+        children = previewCache.getOrElseUpdate(expr, Element(expr, () => {}))
       }
       
-      def clear: Unit = {
+      def setExprs(exprs: Seq[Expr]): Unit = {
         padding = Insets(0)
-        center = null
+        children = exprs map (e => Element(e, () => {}, Cursor.Hand))
+      }
+      
+      def clear(): Unit = {
+        padding = Insets(0)
+        children = Seq()
       }
       
       def clearCache(): Unit = previewCache.clear()
@@ -75,8 +82,5 @@ protected[gui] trait ExpressionPanes { window: AssistantWindow =>
       mode = m
       elements foreach (e => mode.onNewRenderer(e.renderer))
     }
-    
-    def setPreviewExpr(e: Expr): Unit = PreviewBox.setExpr(e)
-    def clearPreview: Unit = PreviewBox.clear
   }
 }
