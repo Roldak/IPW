@@ -27,15 +27,15 @@ trait Analysers { theory: AssistedTheory =>
   sealed abstract class Path
   case class NotE(next: Path) extends Path
   case class AndE(clauseIndex: Int, next: Path) extends Path
-  case class ForallE(tpe: Type, next: Path) extends Path
-  case class ImplE(next: Path) extends Path
+  case class ForallE(vals: Seq[ValDef], next: Path) extends Path
+  case class ImplE(assumption: Expr, next: Path) extends Path
   case object EndOfPath extends Path
 
   case class Conclusion(expr: Expr, freeVars: Set[Variable], path: Path) {
     def notE = Conclusion(expr, freeVars, NotE(path))
     def andE(index: Int) = Conclusion(expr, freeVars, AndE(index, path))
-    def forallE(v: ValDef) = Conclusion(expr, freeVars + v.toVariable, ForallE(v.tpe, path))
-    def implE = Conclusion(expr, freeVars, ImplE(path))
+    def forallE(vals: Seq[ValDef]) = Conclusion(expr, freeVars ++ vals.map(_.toVariable), ForallE(vals, path))
+    def implE(assumption: Expr) = Conclusion(expr, freeVars, ImplE(assumption, path))
   }
 
   private def conclusionsOf(thm: Expr): Seq[Conclusion] = {
@@ -47,10 +47,11 @@ trait Analysers { theory: AssistedTheory =>
         exprs.zipWithIndex flatMap { case (e, i) => conclusionsOf(e) map (_.andE(i)) }
 
       case Forall(vals, body) =>
-        vals.foldLeft(conclusionsOf(body))((paths: Seq[Conclusion], v: ValDef) => paths map (_.forallE(v)))
+        //vals.foldLeft(conclusionsOf(body))((paths: Seq[Conclusion], v: ValDef) => paths map (_.forallE(v)))
+        conclusionsOf(body) map (_.forallE(vals))
 
-      case Implies(_, rhs) =>
-        conclusionsOf(rhs) map (_.implE)
+      case Implies(assumption, rhs) =>
+        conclusionsOf(rhs) map (_.implE(assumption))
 
       case _ => Seq()
     }
@@ -78,11 +79,11 @@ trait Analysers { theory: AssistedTheory =>
       Forall(Seq("z" :: IntegerType), (E("x") === E("y")) ==> (E("x") === E("z"))))
 
     //theory.conclusionsOf(tmp) foreach println
-    
+
     val x = ("x" :: IntegerType)
     val y = ("y" :: IntegerType)
     val z = ("z" :: IntegerType).toVariable
-    println(theory.unify(Forall(Seq(x), x.toVariable === E(2)), Forall(Seq(y), y.toVariable === z), Set(z)))
+    println(theory.unify(Forall(Seq(x), x.toVariable === E(2)), Lambda(Seq(y), y.toVariable === z), Set(z)))
 
     thms.toMap
   }
@@ -116,8 +117,55 @@ trait Analysers { theory: AssistedTheory =>
     case _ => None
   }
 
+  import scala.language.implicitConversions
+
+  private implicit def attemptToOption[T](x: Attempt[T]): Option[T] = x match {
+    case Success(v) => Some(v)
+    case _          => None
+  }
+
+  def followPath(thm: Theorem, path: Path, subst: Map[Variable, Expr]): Option[Theorem] = path match {
+    case NotE(next)               => followPath(notE(thm), next, subst)
+    case AndE(i, next)            => followPath(andE(thm)(i), next, subst)
+    case ForallE(v :: vals, next) => followPath(forallE(thm)(subst(v.toVariable), (vals map (v => subst(v.toVariable)): _*)), next, subst)
+    case ImplE(assumption, next)  => ???
+    case EndOfPath                => Some(thm)
+  }
+
+  def instantiateConclusion(expr: Expr, thm: Theorem): Seq[(Expr, Theorem)] = {
+    val concls = conclusionsOf(thm.expression) flatMap (_ match {
+      case concl @ Conclusion(Equals(a, b), vars, path) => Seq(
+        (a, (x: Equals) => x.rhs, vars, path),
+        (b, (x: Equals) => x.lhs, vars, path))
+      case _ => Seq()
+    })
+
+    println(s"conclusions for $thm:")
+    concls foreach println
+
+    collectPreorder { expr =>
+      concls flatMap {
+        case (pattern, getter, freeVars, path) =>
+          unify(expr, pattern, freeVars) match {
+            case Some(subst) => followPath(thm, path, subst).map(thm => thm.expression match {
+              case e: Equals => (getter(e), thm)
+            }).toSeq
+            case _ => Seq()
+          }
+      }
+    }(expr)
+  }
+
+  def findTheoremApplications(expr: Expr, thms: Map[String, Theorem]): Seq[Suggestion] = {
+    thms.toSeq flatMap {
+      case (name, thm) =>
+        instantiateConclusion(expr, thm) map { case (res, thm) => ApplyTheorem(name, thm, res) }
+    }
+  }
+
   def analyse(e: Expr, thms: Map[String, Theorem], ihs: Option[StructuralInductionHypotheses]): (Seq[Suggestion], Map[String, Theorem]) = {
     val findInduct = ihs.map(findInductiveHypothesisApplication(e, _)).getOrElse(Map())
-    (collectInvocations(e), thms ++ findInduct)
+    val newThms = thms ++ findInduct
+    (collectInvocations(e) ++ findTheoremApplications(e, newThms), newThms)
   }
 }

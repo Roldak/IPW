@@ -31,4 +31,10 @@ trait Suggestions { theory: AssistedTheory =>
       }
     }
   }
+  
+  case class ApplyTheorem(val name: String, val thm: Theorem, val res: Expr) extends Suggestion(s"Apply theorem $name") {
+    override def apply(e: Expr): Attempt[(Expr, Theorem)] = {
+      Success((res, thm))
+    }
+  }
 }
