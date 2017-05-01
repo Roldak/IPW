@@ -30,7 +30,7 @@ trait AssistedTheory
     val Equals(lhs, rhs) = expr
     val (choosingEnd, suggestingEnd) = SynchronizedChannel[ProofState, UpdateStep]()
     
-    openAssistantWindow(choosingEnd)
+    openAssistantWindow(choosingEnd, rhs)
 
     @tailrec
     def deepen(step: Expr, rhs: Expr, accumulatedProof: Theorem, thms: Map[String, Theorem]): Attempt[Theorem] = {      

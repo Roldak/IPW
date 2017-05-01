@@ -5,15 +5,16 @@ import scalafx.scene.control.ScrollPane
 import scalafx.scene.layout.VBox
 import scalafx.scene.Node
 import scalafx.scene.Cursor
+import scalafx.scene.text._
 import inox._
 import inox.trees._
 import inox.trees.dsl._
 import scalafx.scene.layout.BorderPane
 import scalafx.geometry.Insets
 import scalafx.application.Platform
-
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.{Map => MutableMap}
+import scalafx.scene.layout.Pane
 
 protected[gui] trait ExpressionPanes { window: AssistantWindow =>
   class ExpressionPane(val expressionFontSize: Double) extends ScrollPane { scrollPane =>
@@ -29,22 +30,45 @@ protected[gui] trait ExpressionPanes { window: AssistantWindow =>
       onMouseClicked = handle(callback())
     }
     
-    case object PreviewBox extends VBox {
+    object PreviewBox extends VBox {
       private val previewCache = MutableMap[Expr, Node]()
       
       def setExpr(expr: Expr): Unit = {
+        style = Style.previewStyle
         children = previewCache.getOrElseUpdate(expr, Element(expr, () => {}))
       }
       
       def setExprs(exprs: Seq[(Expr, () => Unit)]): Unit = {
+        style = Style.previewStyle
         children = exprs map (e => Element(e._1, e._2, Cursor.Hand))
       }
       
       def clear(): Unit = {
+        style = null
         children = Seq()
       }
       
       def clearCache(): Unit = previewCache.clear()
+    }
+    
+    object ResultBox extends VBox {
+      private val separator = new BorderPane {
+        padding = Insets(30, 0, 30, 0)
+        minWidth <== scrollPane.width - 2
+        center = new Text {
+          text = "Apply suggestions from the panel on the right until the goal below is reached"
+          font = Font.font(15)
+        }
+      }
+      
+      def setExpr(expr: Expr): Unit = {
+        val elem = Element(expr, () => {})
+        elem.style.unbind()
+        elem.style = Style.goalStyle
+        children = Seq(separator, elem)
+      }
+      
+      def clear(): Unit = {}
     }
 
     private val box = new VBox
@@ -55,7 +79,7 @@ protected[gui] trait ExpressionPanes { window: AssistantWindow =>
     def getMode = mode
     
     content = new VBox {
-      children = Seq(box, PreviewBox)
+      children = Seq(box, PreviewBox, ResultBox)
     }
     
     def addElement(expr: Expr, onClick: () => Unit = () => {}): Unit = {

@@ -36,11 +36,13 @@ trait AssistantWindow
     while (true) f
   }
 
-  def openAssistantWindow(choosingEnd: ChoosingEnd) = {
+  def openAssistantWindow(choosingEnd: ChoosingEnd, goal: Expr) = {
     Platform.runLater {
       val suggestionBuffer = new ObservableBuffer[(String, Seq[Suggestion])]
       val expressionPane = new ExpressionPane(14)
       val theoremPane = new ExpressionPane(12)
+      
+      expressionPane.ResultBox.setExpr(goal)
 
       def onSelectSuggestion(s: Suggestion) = () => {
         choosingEnd.write(s)
@@ -65,7 +67,7 @@ trait AssistantWindow
               padding = Insets(10, 0, 10, 5)
               top = new ListView[(String, Seq[Suggestion])] {
                 items = suggestionBuffer
-                cellFactory = TextFieldListCell.forListView(StringConverter.toStringConverter[(String, Seq[Suggestion])](s => s._1 + s" (${s._2.size})"))
+                cellFactory = TextFieldListCell.forListView(StringConverter.toStringConverter[(String, Seq[Suggestion])](_._1))
                 selectionModel().selectedItem.onChange { (_, _, newValue) =>
                   if (newValue != null) { // is null when suggestionBuffer.clear() triggers onChange
                     if (newValue._2.size > 1) {
