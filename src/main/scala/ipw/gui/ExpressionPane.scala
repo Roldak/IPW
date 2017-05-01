@@ -32,20 +32,15 @@ protected[gui] trait ExpressionPanes { window: AssistantWindow =>
     case object PreviewBox extends VBox {
       private val previewCache = MutableMap[Expr, Node]()
       
-      minWidth <== scrollPane.width - 2
-      
       def setExpr(expr: Expr): Unit = {
-        padding = Insets(10)
         children = previewCache.getOrElseUpdate(expr, Element(expr, () => {}))
       }
       
       def setExprs(exprs: Seq[(Expr, () => Unit)]): Unit = {
-        padding = Insets(0)
         children = exprs map (e => Element(e._1, e._2, Cursor.Hand))
       }
       
       def clear(): Unit = {
-        padding = Insets(0)
         children = Seq()
       }
       

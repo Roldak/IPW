@@ -17,6 +17,7 @@ import ipw.io.SynchronizedChannel
 trait AssistedTheory 
   extends Theory
     with Analysers
+    with PathTreeOps
     with Suggestions
     with AssistantWindow { self =>
 
