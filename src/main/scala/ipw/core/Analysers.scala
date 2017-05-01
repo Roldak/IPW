@@ -125,30 +125,36 @@ trait Analysers { theory: AssistedTheory =>
   }
 
   def followPath(thm: Theorem, path: Path, subst: Map[Variable, Expr]): Option[Theorem] = path match {
-    case NotE(next)               => followPath(notE(thm), next, subst)
-    case AndE(i, next)            => followPath(andE(thm)(i), next, subst)
-    case ForallE(v :: vals, next) => followPath(forallE(thm)(subst(v.toVariable), (vals map (v => subst(v.toVariable)): _*)), next, subst)
-    case ImplE(assumption, next)  => ???
-    case EndOfPath                => Some(thm)
+    case NotE(next)              => followPath(notE(thm), next, subst)
+    case AndE(i, next)           => followPath(andE(thm)(i), next, subst)
+    case ForallE(vals, next)     => followPath(forallE(thm)(subst(vals.head.toVariable), (vals.tail map (v => subst(v.toVariable)): _*)), next, subst)
+    case ImplE(assumption, next) => ???
+    case EndOfPath               => Some(thm)
   }
 
   def instantiateConclusion(expr: Expr, thm: Theorem): Seq[(Expr, Theorem)] = {
     val concls = conclusionsOf(thm.expression) flatMap (_ match {
       case concl @ Conclusion(Equals(a, b), vars, path) => Seq(
-        (a, (x: Equals) => x.rhs, vars, path),
-        (b, (x: Equals) => x.lhs, vars, path))
+        (a, (x: Equals) => x.lhs, (x: Equals) => x.rhs, vars, path),
+        (b, (x: Equals) => x.rhs, (x: Equals) => x.lhs, vars, path))
       case _ => Seq()
     })
 
     println(s"conclusions for $thm:")
     concls foreach println
 
-    collectPreorder { expr =>
+    collectPreorder { exp =>
       concls flatMap {
-        case (pattern, getter, freeVars, path) =>
-          unify(expr, pattern, freeVars) match {
+        case (pattern, from, to, freeVars, path) =>
+          unify(exp, pattern, freeVars) match {
             case Some(subst) => followPath(thm, path, subst).map(thm => thm.expression match {
-              case e: Equals => (getter(e), thm)
+              case eq: Equals =>
+                val res = postMap {
+                  case e if e == from(eq) => Some(to(eq))
+                  case _                  => None
+                }(expr)
+
+                (res, thm)
             }).toSeq
             case _ => Seq()
           }
