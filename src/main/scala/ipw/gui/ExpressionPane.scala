@@ -11,6 +11,7 @@ import scalafx.geometry.Insets
 import scalafx.application.Platform
 
 import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.{Map => MutableMap}
 
 protected[gui] trait ExpressionPanes { window: AssistantWindow =>
   class ExpressionPane(val expressionFontSize: Double) extends ScrollPane { scrollPane =>
@@ -26,18 +27,22 @@ protected[gui] trait ExpressionPanes { window: AssistantWindow =>
     }
     
     case object PreviewBox extends BorderPane {
+      private val previewCache = MutableMap[Expr, ASTRenderer]()
+      
       style <== when (hover) choose Style.eqHoverStyle otherwise Style.eqStyle
       minWidth <== scrollPane.width - 2
       
       def setExpr(expr: Expr): Unit = {
         padding = Insets(10)
-        center = new ASTRenderer(scrollPane, expr, expressionFontSize)
+        center = previewCache.getOrElseUpdate(expr, new ASTRenderer(scrollPane, expr, expressionFontSize))
       }
       
       def clear: Unit = {
         padding = Insets(0)
         center = null
       }
+      
+      def clearCache(): Unit = previewCache.clear()
     }
 
     private val box = new VBox
@@ -55,12 +60,14 @@ protected[gui] trait ExpressionPanes { window: AssistantWindow =>
       elements += Element(expr, onClick)
       box.children.add(elements.last)
       mode.onNewRenderer(lastRenderer)
+      PreviewBox.clearCache()
       Platform.runLater { scrollPane.vvalue = 1.0 }
     }
     
     def clear: Unit = {
       elements.clear()
       box.children.clear()
+      PreviewBox.clearCache()
     }
     
     def installMode(m: InputMode): Unit = {
