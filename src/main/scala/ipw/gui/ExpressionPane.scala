@@ -24,6 +24,21 @@ protected[gui] trait ExpressionPanes { window: AssistantWindow =>
       
       onMouseClicked = handle(callback())
     }
+    
+    case object PreviewBox extends BorderPane {
+      style <== when (hover) choose Style.eqHoverStyle otherwise Style.eqStyle
+      minWidth <== scrollPane.width - 2
+      
+      def setExpr(expr: Expr): Unit = {
+        padding = Insets(10)
+        center = new ASTRenderer(scrollPane, expr, expressionFontSize)
+      }
+      
+      def clear: Unit = {
+        padding = Insets(0)
+        center = null
+      }
+    }
 
     private val box = new VBox
     private val elements = new ArrayBuffer[Element]
@@ -32,7 +47,9 @@ protected[gui] trait ExpressionPanes { window: AssistantWindow =>
     def lastRenderer = elements.last.renderer
     def getMode = mode
     
-    content = box
+    content = new VBox {
+      children = Seq(box, PreviewBox)
+    }
     
     def addElement(expr: Expr, onClick: () => Unit = () => {}): Unit = {
       elements += Element(expr, onClick)
@@ -51,5 +68,8 @@ protected[gui] trait ExpressionPanes { window: AssistantWindow =>
       mode = m
       elements foreach (e => mode.onNewRenderer(e.renderer))
     }
+    
+    def setPreviewExpr(e: Expr): Unit = PreviewBox.setExpr(e)
+    def clearPreview: Unit = PreviewBox.clear
   }
 }

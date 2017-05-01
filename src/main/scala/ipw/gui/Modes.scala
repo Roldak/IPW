@@ -3,7 +3,6 @@ package ipw.gui
 import scalafx.Includes._
 import scalafx.scene.paint.Color
 import scalafx.scene.Cursor
-
 import inox._
 import inox.trees._
 import inox.trees.dsl._
@@ -14,6 +13,7 @@ trait Modes { window: AssistantWindow =>
     def onNewRenderer(renderer: ASTRenderer): Unit = {}
     def onRemoveRenderer(renderer: ASTRenderer): Unit = {
       renderer.reset
+      renderer.pane.clearPreview
     }
 
     def onMouseEnteredNode(node: Code.Node): Unit = {}
@@ -35,7 +35,7 @@ trait Modes { window: AssistantWindow =>
     }
   }
 
-  protected[gui] case class SelectingInExpression(renderer: ASTRenderer, selectables: Seq[(Expr, () => Unit)]) extends InputMode {
+  protected[gui] case class SelectingInExpression(renderer: ASTRenderer, selectables: Seq[(Expr, Option[Expr], () => Unit)]) extends InputMode {
     override def onNewRenderer(r: ASTRenderer): Unit = {
       if (r == renderer) {
         r.codeNodes foreach { n =>
@@ -51,11 +51,12 @@ trait Modes { window: AssistantWindow =>
     }
 
     override def onMouseEnteredNode(node: Code.Node): Unit = {
-      if (selectables exists (_._1 == node.expression)) {
+      selectables find (_._1 == node.expression) foreach { s =>
         node.neighbors foreach { n =>
           n.underline = true
           n.cursor = Cursor.Hand
         }
+        s._2 foreach (renderer.pane.setPreviewExpr(_))
       }
     }
 
@@ -65,11 +66,12 @@ trait Modes { window: AssistantWindow =>
           n.underline = false
           n.cursor = Cursor.Default
         }
+        renderer.pane.clearPreview
       }
     }
 
     override def onMouseClickedNode(node: Code.Node): Unit = {
-      selectables find (_._1 == node.expression) foreach (_._2())
+      selectables find (_._1 == node.expression) foreach (_._3())
     }
   }
 }

@@ -70,7 +70,7 @@ trait AssistantWindow
                   if (newValue != null) { // is null when suggestionBuffer.clear() triggers onChange
                     if (newValue._2.size > 1) {
                       val validSuggs = newValue._2 flatMap {
-                        case s @ ExprTransformingSuggestion(expr) => Seq((expr, onSelectSuggestion(s)))
+                        case s @ ExprTransformingSuggestion(expr) => Seq((expr, PreviewableSuggestion.unapply(s), onSelectSuggestion(s)))
                         case _ => Seq()
                       }
                       expressionPane.installMode(SelectingInExpression(expressionPane.lastRenderer, validSuggs))

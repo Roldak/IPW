@@ -23,6 +23,13 @@ trait Suggestions { theory: AssistedTheory =>
       case _ => None
     }
   }
+  
+  object PreviewableSuggestion {
+    def unapply(s: Suggestion): Option[Expr] = s match {
+      case ApplyTheorem(_, _, _, res) => Some(res)
+      case _ => None
+    }
+  }
 
   case object Pass extends Suggestion("Do nothing") {
     override def apply(e: Expr): Attempt[(Expr, Theorem)] = Success((e, truth))
