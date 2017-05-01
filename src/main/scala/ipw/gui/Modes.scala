@@ -2,6 +2,7 @@ package ipw.gui
 
 import scalafx.Includes._
 import scalafx.scene.paint.Color
+import scalafx.scene.Cursor
 
 import inox._
 import inox.trees._
@@ -53,6 +54,7 @@ trait Modes { window: AssistantWindow =>
       if (selectables exists (_._1 == node.expression)) {
         node.neighbors foreach { n =>
           n.underline = true
+          n.cursor = Cursor.Hand
         }
       }
     }
@@ -61,6 +63,7 @@ trait Modes { window: AssistantWindow =>
       if (selectables exists (_._1 == node.expression)) {
         node.neighbors foreach { n =>
           n.underline = false
+          n.cursor = Cursor.Default
         }
       }
     }

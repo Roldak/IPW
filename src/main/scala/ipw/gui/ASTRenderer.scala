@@ -65,12 +65,14 @@ trait Rendering { window: AssistantWindow =>
           val fill = self.fill.value
           val style = self.style.value
           val underline = self.underline.value
+          val cursor = self.cursor.value
 
           def apply() = {
             self.font = font
             self.fill = fill
             self.style = style
             self.underline = underline
+            self.cursor = cursor
           }
         }
         finalized = true
