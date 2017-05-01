@@ -21,7 +21,8 @@ import scalafx.util.StringConverter
 trait AssistantWindow 
   extends Rendering
     with Styles
-    with ExpressionPanes { theory: AssistedTheory =>
+    with ExpressionPanes
+    with Modes { theory: AssistedTheory =>
 
   Platform.implicitExit = false
 
@@ -61,9 +62,16 @@ trait AssistantWindow
                 cellFactory = TextFieldListCell.forListView(StringConverter.toStringConverter[(String, Seq[Suggestion])](s => s._1 + s" (${s._2.size})"))
                 selectionModel().selectedItem.onChange { (_, _, newValue) =>
                   if (newValue != null) { // is null when suggestionBuffer.clear() triggers onChange
-                    // TODO: next step!
-                    choosingEnd.write(newValue._2.head)
-                    Platform.runLater { suggestionBuffer.clear() }
+                    if (newValue._2.size > 1) {
+                      val validSuggs = newValue._2 flatMap {
+                        case s @ ExprTransformingSuggestion(expr) => Seq((expr, () => {}))
+                        case _ => Seq()
+                      }
+                      expressionPane.installMode(SelectingInExpression(expressionPane.lastRenderer, validSuggs))
+                    } else {
+                      choosingEnd.write(newValue._2.head)
+                      Platform.runLater { suggestionBuffer.clear() }
+                    }
                   }
                 }
               }

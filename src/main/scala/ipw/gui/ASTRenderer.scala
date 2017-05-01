@@ -14,96 +14,105 @@ import javafx.scene.input.MouseEvent
 import scalafx.scene.Node
 import scalafx.scene.paint.Paint
 
-protected[gui] object Consts {
-  def OpeningBracket(implicit ctx: FlowContext) = Code.Operator("(")
-  def ClosingBracket(implicit ctx: FlowContext) = Code.Operator(")")
-  def OpeningSquareBracket(implicit ctx: FlowContext) = Code.Operator("[")
-  def ClosingSquareBracket(implicit ctx: FlowContext) = Code.Operator("]")
-  def OpeningBrace(implicit ctx: FlowContext) = Code.Operator("{")
-  def ClosingBrace(implicit ctx: FlowContext) = Code.Operator("}")
-  def CommaSpace(implicit ctx: FlowContext) = Code.Operator(", ")
-  def Dot(implicit ctx: FlowContext) = Code.Operator(".")
-  def Colon(implicit ctx: FlowContext) = Code.Operator(":")
-  def Space(implicit ctx: FlowContext) = Code.Operator(" ")
-  def LineBreak(implicit ctx: FlowContext) = Code.Operator("\n")
+trait Rendering { window: AssistantWindow =>
 
-  def ConsolasFont(implicit ctx: FlowContext) = Font.font("consolas", ctx.fontSize)
-  def ConsolasBoldFont(implicit ctx: FlowContext) = Font.font("consolas", FontWeight.Bold, ctx.fontSize)
-  def ConsolasItalicFont(implicit ctx: FlowContext) = Font.font("consolas", FontPosture.Italic, ctx.fontSize)
-}
+  protected object Consts {
+    def OpeningBracket(implicit ctx: FlowContext) = Code.Operator("(")
+    def ClosingBracket(implicit ctx: FlowContext) = Code.Operator(")")
+    def OpeningSquareBracket(implicit ctx: FlowContext) = Code.Operator("[")
+    def ClosingSquareBracket(implicit ctx: FlowContext) = Code.Operator("]")
+    def OpeningBrace(implicit ctx: FlowContext) = Code.Operator("{")
+    def ClosingBrace(implicit ctx: FlowContext) = Code.Operator("}")
+    def CommaSpace(implicit ctx: FlowContext) = Code.Operator(", ")
+    def Dot(implicit ctx: FlowContext) = Code.Operator(".")
+    def Colon(implicit ctx: FlowContext) = Code.Operator(":")
+    def Space(implicit ctx: FlowContext) = Code.Operator(" ")
+    def LineBreak(implicit ctx: FlowContext) = Code.Operator("\n")
 
-protected[gui] object Code {
-  class Node(text: String) extends Text(text) { self =>
-    var expression: Expr = null
-    var neighbors: Seq[Node] = null
-
-    private var finalized = false
-    private var resetState: () => Unit = null
-
-    def withFont(f: Font) = {
-      font = f
-      this
-    }
-    def withColor(c: Color) = {
-      fill = c
-      this
-    }
-    def withUnderline = {
-      underline = true
-      this
-    }
-
-    def finalize(exp: Expr, neighborz: Seq[Node]) = {
-      expression = exp
-      neighbors = neighborz
-      resetState = new Function0[Unit] {
-        val font = self.font.value
-        val fill = self.fill.value
-        val style = self.style.value
-        val underline = self.underline.value
-
-        def apply() = {
-          self.font = font
-          self.fill = fill
-          self.style = style
-          self.underline = underline
-        }
-      }
-      finalized = true
-    }
-
-    def isFinalized = finalized
-
-    onMouseEntered = handle {
-      neighbors.foreach { n =>
-        n.underline = true
-      }
-    }
-    onMouseExited = handle {
-      neighbors.foreach(_.resetState())
-    }
+    def ConsolasFont(implicit ctx: FlowContext) = Font.font("consolas", ctx.fontSize)
+    def ConsolasBoldFont(implicit ctx: FlowContext) = Font.font("consolas", FontWeight.Bold, ctx.fontSize)
+    def ConsolasItalicFont(implicit ctx: FlowContext) = Font.font("consolas", FontPosture.Italic, ctx.fontSize)
   }
 
-  private def Raw(text: String)(implicit ctx: FlowContext) = new Node(text) withFont Consts.ConsolasFont
+  protected[gui] object Code {
+    class Node(text: String)(implicit ctx: FlowContext) extends Text(text) { self =>
+      val renderer = ctx.renderer
+      
+      var expression: Expr = null
+      var neighbors: Seq[Node] = null
 
-  def Operator(text: String)(implicit ctx: FlowContext) = Raw(text) withColor Black
-  def TreeName(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(181, 58, 103)
-  def Literal(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(226, 160, 255)
-  def Identifier(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(94, 94, 255)
-  def BoundVar(text: String)(implicit ctx: FlowContext) = Raw(text) withColor Color.DarkGray withFont Consts.ConsolasItalicFont
-  def Type(text: String)(implicit ctx: FlowContext) = Raw(text) withColor Black
-  def ADTType(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(210, 87, 0) withFont Consts.ConsolasBoldFont
-  def Keyword(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(193, 58, 85) withFont Consts.ConsolasBoldFont
-  def Indent(n: Int)(implicit ctx: FlowContext) = Raw("  " * n)
-}
+      private var finalized = false
+      private var resetState: () => Unit = null
 
-protected[gui] case class FlowContext(indent: Int, parents: List[Expr], boundVars: Set[ValDef], fontSize: Double) {
-  def indented = FlowContext(indent + 1, parents, boundVars, fontSize)
-  def withParent(e: Expr) = FlowContext(indent, e :: parents, boundVars, fontSize)
-  def withBoundVars(v: Iterable[ValDef]) = FlowContext(indent, parents, boundVars ++ v, fontSize)
-}
+      def withFont(f: Font) = {
+        font = f
+        this
+      }
+      def withColor(c: Color) = {
+        fill = c
+        this
+      }
+      def withUnderline = {
+        underline = true
+        this
+      }
 
-trait Rendering { theory: AssistedTheory =>
+      def finalize(exp: Expr, neighborz: Seq[Node]) = {
+        expression = exp
+        neighbors = neighborz
+        resetState = new Function0[Unit] {
+          val font = self.font.value
+          val fill = self.fill.value
+          val style = self.style.value
+          val underline = self.underline.value
+
+          def apply() = {
+            self.font = font
+            self.fill = fill
+            self.style = style
+            self.underline = underline
+          }
+        }
+        finalized = true
+      }
+
+      def isFinalized = finalized
+
+      def reset: Unit = resetState()
+
+      onMouseEntered = handle {
+        renderer.pane.getMode.onMouseEnteredNode(this)
+      }
+      
+      onMouseExited = handle {
+        renderer.pane.getMode.onMouseExitedNode(this)
+      }
+      
+      onMouseClicked = handle {
+        renderer.pane.getMode.onMouseClickedNode(this)
+      }
+    }
+
+    private def Raw(text: String)(implicit ctx: FlowContext) = new Node(text) withFont Consts.ConsolasFont
+
+    def Operator(text: String)(implicit ctx: FlowContext) = Raw(text) withColor Black
+    def TreeName(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(181, 58, 103)
+    def Literal(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(226, 160, 255)
+    def Identifier(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(94, 94, 255)
+    def BoundVar(text: String)(implicit ctx: FlowContext) = Raw(text) withColor Color.DarkGray withFont Consts.ConsolasItalicFont
+    def Type(text: String)(implicit ctx: FlowContext) = Raw(text) withColor Black
+    def ADTType(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(210, 87, 0) withFont Consts.ConsolasBoldFont
+    def Keyword(text: String)(implicit ctx: FlowContext) = Raw(text) withColor rgb(193, 58, 85) withFont Consts.ConsolasBoldFont
+    def Indent(n: Int)(implicit ctx: FlowContext) = Raw("  " * n)
+  }
+
+  protected case class FlowContext(
+      indent: Int, parents: List[Expr], boundVars: Set[ValDef], fontSize: Double, renderer: ASTRenderer) {
+    def indented = FlowContext(indent + 1, parents, boundVars, fontSize, renderer)
+    def withParent(e: Expr) = FlowContext(indent, e :: parents, boundVars, fontSize, renderer)
+    def withBoundVars(v: Iterable[ValDef]) = FlowContext(indent, parents, boundVars ++ v, fontSize, renderer)
+  }
+
   import Consts._
 
   protected object BinaryOperator {
@@ -123,7 +132,7 @@ trait Rendering { theory: AssistedTheory =>
   }
 
   protected def typeNode(tpe: Type)(implicit ctx: FlowContext): Seq[Code.Node] = Seq(Code.Type(prettyPrint(tpe, PrinterOptions())))
-  
+
   protected def block(stmt: Seq[Code.Node])(implicit ctx: FlowContext): Seq[Code.Node] =
     Seq(OpeningBrace, LineBreak, Code.Indent(ctx.indent + 1)) ++ stmt ++ Seq(LineBreak, Code.Indent(ctx.indent), ClosingBrace)
 
@@ -155,12 +164,14 @@ trait Rendering { theory: AssistedTheory =>
       buildFlow(e) ++ Seq(Dot, Code.Keyword("as"), OpeningSquareBracket) ++ typeNode(tp) :+ ClosingSquareBracket
 
     case IfExpr(cond, then, elze) =>
-      Seq(Code.Keyword("if"), Space, OpeningBracket) ++ buildFlow(cond) ++ Seq(ClosingBracket, Space) ++ 
+      Seq(Code.Keyword("if"), Space, OpeningBracket) ++ buildFlow(cond) ++ Seq(ClosingBracket, Space) ++
         block(buildFlow(then)(ctx indented)) ++ Seq(Code.Keyword(" else ")) ++ block(buildFlow(elze)(ctx indented))
 
     case Forall(vals, expr) =>
-      Seq(Code.Operator("\u2200")) ++ nary(vals.map { v => Seq(Code.BoundVar(v.id.toString), Colon) ++ 
-        typeNode(v.tpe) }) ++ Seq(Dot, Space) ++ buildFlow(expr)(ctx withBoundVars(vals))
+      Seq(Code.Operator("\u2200")) ++ nary(vals.map { v =>
+        Seq(Code.BoundVar(v.id.toString), Colon) ++
+          typeNode(v.tpe)
+      }) ++ Seq(Dot, Space) ++ buildFlow(expr)(ctx withBoundVars (vals))
 
     case Operator(exprs, _) =>
       Seq(Code.TreeName(e.getClass.getSimpleName)) ++ nary(exprs map buildFlow, ", ", "(", ")")
@@ -172,7 +183,13 @@ trait Rendering { theory: AssistedTheory =>
     nodes
   }
 
-  class ASTRenderer(expr: Expr, fontSize: Double) extends TextFlow {
-    children = buildFlow(expr)(FlowContext(0, Nil, Set.empty, fontSize))
+  class ASTRenderer(val pane: ExpressionPane, expr: Expr, fontSize: Double) extends TextFlow {
+    val codeNodes = buildFlow(expr)(FlowContext(0, Nil, Set.empty, fontSize, this))
+
+    children = codeNodes
+
+    def reset: Unit = {
+      codeNodes foreach (_.reset)
+    }
   }
 }

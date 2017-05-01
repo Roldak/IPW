@@ -120,7 +120,7 @@ trait Analysers { theory: AssistedTheory =>
     case EndOfPath               => Some(thm)
   }
 
-  def instantiateConclusion(expr: Expr, thm: Theorem): Seq[(Expr, Theorem)] = {
+  def instantiateConclusion(expr: Expr, thm: Theorem): Seq[(Expr, Expr, Theorem)] = {
     val concls = conclusionsOf(thm.expression) flatMap (_ match {
       case concl @ Conclusion(Equals(a, b), vars, path) => Seq(
         (a, (x: Equals) => x.lhs, (x: Equals) => x.rhs, vars, path),
@@ -140,7 +140,7 @@ trait Analysers { theory: AssistedTheory =>
                 case _                  => None
               }(expr)
 
-              (res, thm)
+              (from(eq), res, thm)
             }.toSeq
             case _ => Seq()
           }
@@ -151,7 +151,7 @@ trait Analysers { theory: AssistedTheory =>
   def findTheoremApplications(expr: Expr, thms: Map[String, Theorem]): Seq[Suggestion] = {
     thms.toSeq flatMap {
       case (name, thm) =>
-        instantiateConclusion(expr, thm) map { case (res, thm) => ApplyTheorem(name, thm, res) }
+        instantiateConclusion(expr, thm) map { case (subj, res, thm) => ApplyTheorem(name, thm, subj, res) }
     }
   }
 

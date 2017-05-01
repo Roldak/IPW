@@ -15,6 +15,14 @@ trait Suggestions { theory: AssistedTheory =>
   sealed abstract class Suggestion(val descr: String) {
     def apply(e: Expr): Attempt[(Expr, Theorem)]
   }
+  
+  object ExprTransformingSuggestion {
+    def unapply(s: Suggestion): Option[Expr] = s match {
+      case ExpandInvocation(inv) => Some(inv)
+      case ApplyTheorem(_, _, subj, _) => Some(subj)
+      case _ => None
+    }
+  }
 
   case object Pass extends Suggestion("Do nothing") {
     override def apply(e: Expr): Attempt[(Expr, Theorem)] = Success((e, truth))
@@ -32,7 +40,7 @@ trait Suggestions { theory: AssistedTheory =>
     }
   }
   
-  case class ApplyTheorem(val name: String, val thm: Theorem, val res: Expr) extends Suggestion(s"Apply theorem $name") {
+  case class ApplyTheorem(val name: String, val thm: Theorem, val subject: Expr, val res: Expr) extends Suggestion(s"Apply theorem $name") {
     override def apply(e: Expr): Attempt[(Expr, Theorem)] = {
       Success((res, thm))
     }
