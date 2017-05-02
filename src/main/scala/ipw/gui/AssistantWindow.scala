@@ -20,7 +20,6 @@ import scalafx.util.StringConverter
 
 trait AssistantWindow
     extends Rendering
-    with Styles
     with ExpressionPanes
     with Modes { theory: AssistedTheory =>
 
@@ -55,10 +54,11 @@ trait AssistantWindow
         width = 1350
         height = 800
         scene = new Scene {
+          stylesheets = Seq("file:resources/assistantWindow.css")
           root = new BorderPane { window =>
             padding = Insets(20)
             center = new BorderPane {
-              style = Style.tfStyle
+              styleClass += "main-panel"
               margin = Insets(10, 0, 10, 0)
               center = expressionPane
               prefWidth <== window.width * 2 / 3
@@ -67,6 +67,7 @@ trait AssistantWindow
               padding = Insets(10, 0, 10, 5)
               top = new ListView[(String, Seq[Suggestion])] {
                 items = suggestionBuffer
+                styleClass += "suggestion-view"
                 cellFactory = TextFieldListCell.forListView(StringConverter.toStringConverter[(String, Seq[Suggestion])](_._1))
                 selectionModel().selectedItem.onChange { (_, _, newValue) =>
                   if (newValue != null) { // is null when suggestionBuffer.clear() triggers onChange

@@ -22,7 +22,7 @@ protected[gui] trait ExpressionPanes { window: AssistantWindow =>
       val renderer = new ASTRenderer(scrollPane, expr, expressionFontSize) 
       
       padding = Insets(10)
-      style <== when (hover) choose Style.eqHoverStyle otherwise Style.eqStyle
+      styleClass += "expression-pane"
       center = renderer
       minWidth <== scrollPane.width - 2
       cursor = curs
@@ -34,17 +34,17 @@ protected[gui] trait ExpressionPanes { window: AssistantWindow =>
       private val previewCache = MutableMap[Expr, Node]()
       
       def setExpr(expr: Expr): Unit = {
-        style = Style.previewStyle
+        styleClass = Seq("preview-pane")
         children = previewCache.getOrElseUpdate(expr, Element(expr, () => {}))
       }
       
       def setExprs(exprs: Seq[(Expr, () => Unit)]): Unit = {
-        style = Style.previewStyle
+        styleClass = Seq("preview-pane")
         children = exprs map (e => Element(e._1, e._2, Cursor.Hand))
       }
       
       def clear(): Unit = {
-        style = null
+        styleClass.clear()
         children = Seq()
       }
       
@@ -63,8 +63,7 @@ protected[gui] trait ExpressionPanes { window: AssistantWindow =>
       
       def setExpr(expr: Expr): Unit = {
         val elem = Element(expr, () => {})
-        elem.style.unbind()
-        elem.style = Style.goalStyle
+        elem.styleClass = Seq("goal-pane")
         children = Seq(separator, elem)
       }
       
