@@ -76,9 +76,11 @@ trait Analysers { theory: AssistedTheory =>
   }
 
   def unify(expr: Expr, pattern: Expr, instantiableVars: Set[Variable]): Option[Map[Variable, Expr]] = (expr, pattern) match {
-    case (ev: Variable, pv: Variable) if ev == pv                               => Some(Map.empty)
+    case (ev: Variable, pv: Variable) if ev == pv => Some(Map.empty)
 
-    case (expr, pv: Variable) if instantiableVars(pv) && expr.getType == pv.tpe => Some(Map(pv -> expr))
+    case (expr, pv: Variable) =>
+      if (instantiableVars(pv) && expr.getType == pv.tpe) Some(Map(pv -> expr))
+      else None
 
     case (expr, pattern) if expr.getClass == pattern.getClass =>
       val (evars, eexprs, etypes, ebuilder) = deconstructor.deconstruct(expr)
