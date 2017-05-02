@@ -18,6 +18,9 @@ import scalafx.concurrent.Task
 import scalafx.scene.control.cell.TextFieldListCell
 import scalafx.util.StringConverter
 import ipw.concurrent.Utils._
+import scala.concurrent.Future
+import scala.concurrent.Await
+import scala.concurrent.duration.Duration
 
 trait AssistantWindow
     extends Rendering
@@ -28,7 +31,7 @@ trait AssistantWindow
 
   new JFXPanel() // force init
 
-  def openAssistantWindow(choosingEnd: ChoosingEnd, goal: Expr) = {
+  def openAssistantWindow(choosingEnd: ChoosingEnd, goal: Expr, done: Future[Unit]) = {
     Platform.runLater {
       val suggestionBuffer = new ObservableBuffer[(String, Seq[Suggestion])]
       val expressionPane = new ExpressionPane(14)
@@ -81,6 +84,10 @@ trait AssistantWindow
             }
           }
         }
+        
+        onCloseRequest = handle {
+          println("CLOSED")
+        }
       }
 
       asyncForever {
@@ -96,9 +103,12 @@ trait AssistantWindow
         }
       }
 
+      async {
+        Await.ready(done, Duration.Inf)
+        Platform.runLater { dialogStage.close() }
+      }
+      
       dialogStage.showAndWait()
-
-      Platform.exit()
     }
   }
 }

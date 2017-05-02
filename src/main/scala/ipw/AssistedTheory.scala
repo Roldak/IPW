@@ -11,6 +11,7 @@ import ipw.core._
 import ipw.concurrent.SynchronizedChannel
 import ipw.concurrent.Utils._
 import java.util.concurrent.LinkedBlockingDeque
+import scala.concurrent.Promise
 
 trait AssistedTheory
     extends Theory
@@ -27,8 +28,9 @@ trait AssistedTheory
   def IPWprove(expr: Equals, source: JFile, thms: Map[String, Theorem], ihs: Option[StructuralInductionHypotheses] = None): Attempt[Theorem] = {
     val Equals(lhs, rhs) = expr
     val (choosingEnd, suggestingEnd) = SynchronizedChannel[ProofState, UpdateStep]()
-
-    openAssistantWindow(choosingEnd, rhs)
+    val willTerminate = Promise[Unit] // them lies tho
+    
+    openAssistantWindow(choosingEnd, rhs, willTerminate.future)
 
     val deque = new LinkedBlockingDeque[Option[(Expr, Theorem)]]
 
@@ -67,6 +69,8 @@ trait AssistedTheory
       deepen(lhs, truth, thms)
     }
 
-    proveForever()
+    val res = proveForever()
+    willTerminate.success(())
+    res
   }
 }
