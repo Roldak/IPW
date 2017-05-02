@@ -264,11 +264,11 @@ object Main {
     def sum_(n: Expr) = E(sum)(n)
     def add_(m: Expr, n: Expr) = E(add)(m, n)
 
-    val thm = structuralInduction(m => forall("n" :: T(Nat)())(n => add_(m, n) === add_(n, m)), "m" :: T(Nat)()) {
+    val thm = structuralInduction(m => forall("n" :: NatType)(n => add_(m, n) === add_(n, m)), "m" :: NatType) {
       case (ihs, _) =>
         ihs.expression match {
           case C(`Suc`, mpred) =>
-            val lemma = structuralInduction(n => T(Suc)()(add_(n, mpred)) === add_(n, ihs.expression), "n" :: T(Nat)()) {
+            val lemma = structuralInduction(n => SucType(add_(n, mpred)) === add_(n, ihs.expression), "n" :: NatType) {
               case (ihsLemma, _) =>
                 ihsLemma.expression match {
                   case C(`Suc`, npred) => IPWprove(
@@ -280,11 +280,11 @@ object Main {
                 }
             }
 
-            forallI("n" :: T(Nat)()) { n =>
+            forallI("n" :: NatType) { n =>
               IPWprove(add_(ihs.expression, n) === add_(n, ihs.expression), proofsFile, Map("Lemma" -> lemma), Some(ihs))
             }
           case C(`Z`) =>
-            val lemma = structuralInduction(n => n === add_(n, ihs.expression), "n" :: T(Nat)()) {
+            val lemma = structuralInduction(n => n === add_(n, ihs.expression), "n" :: NatType) {
               case (ihsLemma, _) =>
                 ihsLemma.expression match {
                   case C(`Suc`, npred) => IPWprove(
@@ -296,8 +296,8 @@ object Main {
                 }
             }
             
-            forallI("n" :: T(Nat)()) { n =>
-              IPWprove(add_(ihs.expression, n) === add_(n, ihs.expression), proofsFile, Map("Lemma" -> lemma), Some(ihs))
+            forallI("n" :: NatType) { n =>
+              IPWprove(add_(ihs.expression, n) === add_(n, ihs.expression), proofsFile, Map("Lemma" -> lemma))
             }
         }
     }

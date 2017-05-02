@@ -18,9 +18,9 @@ import scalafx.concurrent.Task
 import scalafx.scene.control.cell.TextFieldListCell
 import scalafx.util.StringConverter
 import ipw.concurrent.Utils._
-import scala.concurrent.Future
-import scala.concurrent.Await
 import scala.concurrent.duration.Duration
+import scala.concurrent._
+import scala.collection.mutable.{Map => MutableMap}
 
 trait AssistantWindow
     extends Rendering
@@ -31,7 +31,9 @@ trait AssistantWindow
 
   new JFXPanel() // force init
 
-  def openAssistantWindow(choosingEnd: ChoosingEnd, goal: Expr, done: Future[Unit]) = {
+  def openAssistantWindow(choosingEnd: ChoosingEnd, goal: Expr, done: Future[Unit]): Future[StatusCallback] = {
+    val statusPromise = Promise[StatusCallback]
+    
     Platform.runLater {
       val suggestionBuffer = new ObservableBuffer[(String, Seq[Suggestion])]
       val expressionPane = new ExpressionPane(14)
@@ -89,11 +91,14 @@ trait AssistantWindow
           choosingEnd.write(Abort)
         }
       }
+      
+      val elemStatus = MutableMap[Expr, StatusText]()
 
       asyncForever {
         val (expr, suggs, thms) = choosingEnd.read
         Platform.runLater {
-          expressionPane.addElement(expr)
+          val elem = expressionPane.addElement(expr)
+          elemStatus.get(expr) foreach (elem.right = _)
 
           suggestionBuffer.clear()
           suggestionBuffer ++= suggs.groupBy(_.descr).toSeq
@@ -108,7 +113,27 @@ trait AssistantWindow
         Platform.runLater { dialogStage.close() }
       }
       
+      statusPromise.success { (e: Expr, status: Status) =>  
+        Platform.runLater {
+          val statusText = elemStatus.getOrElseUpdate(e, new StatusText)
+          expressionPane.elementsForExpr(e) foreach (_.right = statusText)
+          statusText.updateWith(status)
+        }
+      }
+      
       dialogStage.showAndWait()
+    }
+    
+    statusPromise.future
+  }
+  
+  private class StatusText extends Text {
+    private var stage: Int = -1
+    def updateWith(status: Status): Unit = {
+      if (status.stage > stage) {
+        stage = status.stage
+        text = status.message
+      }
     }
   }
 }

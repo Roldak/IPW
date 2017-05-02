@@ -81,13 +81,17 @@ protected[gui] trait ExpressionPanes { window: AssistantWindow =>
       children = Seq(box, PreviewBox, ResultBox)
     }
     
-    def addElement(expr: Expr, onClick: () => Unit = () => {}): Unit = {
-      elements += Element(expr, onClick)
-      box.children.add(elements.last)
+    def addElement(expr: Expr, onClick: () => Unit = () => {}): Element = {
+      val elem = Element(expr, onClick)
+      elements += elem
+      box.children.add(elem)
       mode.onNewRenderer(lastRenderer)
       PreviewBox.clearCache()
       Platform.runLater { scrollPane.vvalue = 1.0 }
+      elem
     }
+    
+    def elementsForExpr(expr: Expr): Seq[Element] = elements filter (_.expr == expr)
     
     def clear: Unit = {
       elements.clear()

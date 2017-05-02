@@ -126,11 +126,14 @@ trait Rendering { window: AssistantWindow =>
 
   protected abstract class TextClickEvent extends EventHandler[MouseEvent]
 
-  protected def nary(exprs: Seq[Seq[Code.Node]], sep: String = ", ", init: String = "", closing: String = "")(implicit ctx: FlowContext): Seq[Code.Node] = {
+  protected def nary(exprs: Seq[Seq[Code.Node]], sep: String = ", ", init: String = "", closing: String = "", 
+      hideIfEmptyExprs: Boolean = false)(implicit ctx: FlowContext): Seq[Code.Node] = {
     val initNode = if (init.isEmpty()) Seq() else Seq(Code.Operator(init))
     val exprNodes = if (exprs.isEmpty) Seq() else exprs.init.flatMap(_ :+ Code.Operator(sep)) ++ exprs.last
     val closingNode = if (closing.isEmpty()) Seq() else Seq(Code.Operator(closing))
-    initNode ++ exprNodes ++ closingNode
+    
+    if (exprNodes.isEmpty && hideIfEmptyExprs) Seq()
+    else initNode ++ exprNodes ++ closingNode
   }
 
   protected def typeNode(tpe: Type)(implicit ctx: FlowContext): Seq[Code.Node] = Seq(Code.Type(prettyPrint(tpe, PrinterOptions())))
@@ -148,10 +151,10 @@ trait Rendering { window: AssistantWindow =>
     case v @ Variable(id, _, _)        => Seq(if (ctx.boundVars contains v.toVal) Code.BoundVar(id.toString) else Code.Identifier(id.toString))
 
     case FunctionInvocation(f, tps, args) =>
-      Seq(Code.Identifier(f.toString)) ++ nary(tps map typeNode, ", ", "[", "]") ++ nary(args map buildFlow, ", ", "(", ")")
+      Seq(Code.Identifier(f.toString)) ++ nary(tps map typeNode, ", ", "[", "]", true) ++ nary(args map buildFlow, ", ", "(", ")")
 
     case ADT(ADTType(id, tps), args) =>
-      Seq(Code.ADTType(id.toString)) ++ nary(tps map typeNode, ", ", "[", "]") ++ nary(args map buildFlow, ", ", "(", ")")
+      Seq(Code.ADTType(id.toString)) ++ nary(tps map typeNode, ", ", "[", "]", true) ++ nary(args map buildFlow, ", ", "(", ")")
 
     case Application(f, args) =>
       Seq(Code.Identifier(f.toString)) ++ nary(args map buildFlow, ", ", "(", ")")
