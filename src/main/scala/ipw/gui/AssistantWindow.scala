@@ -17,6 +17,7 @@ import scalafx.collections.ObservableBuffer
 import scalafx.concurrent.Task
 import scalafx.scene.control.cell.TextFieldListCell
 import scalafx.util.StringConverter
+import ipw.concurrent.Utils._
 
 trait AssistantWindow
     extends Rendering
@@ -26,14 +27,6 @@ trait AssistantWindow
   Platform.implicitExit = false
 
   new JFXPanel() // force init
-
-  private def async(f: => Unit): Unit = (new Thread {
-    override def run = f
-  }).start()
-
-  private def asyncForever(f: => Unit): Unit = async {
-    while (true) f
-  }
 
   def openAssistantWindow(choosingEnd: ChoosingEnd, goal: Expr) = {
     Platform.runLater {

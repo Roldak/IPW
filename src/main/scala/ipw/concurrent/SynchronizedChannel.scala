@@ -1,4 +1,4 @@
-package ipw.io
+package ipw.concurrent
 
 import java.util.concurrent.{BlockingDeque, LinkedBlockingDeque}
 
