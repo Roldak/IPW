@@ -87,7 +87,8 @@ trait Analysers { theory: AssistedTheory =>
       if (evars.size == pvars.size &&
         eexprs.size == pexprs.size &&
         etypes == ptypes &&
-        evars.map(_.tpe) == pvars.map(_.tpe)) {
+        evars.map(_.tpe) == pvars.map(_.tpe) &&
+        pbuilder(evars, eexprs, etypes) == expr) {
 
         val substs = pvars.zip(evars).toMap
         val subPexprs = pexprs.map(pexpr => replaceFromSymbols(substs, pexpr))
