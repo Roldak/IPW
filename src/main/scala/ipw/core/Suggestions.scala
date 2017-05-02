@@ -30,6 +30,10 @@ trait Suggestions { theory: AssistedTheory =>
       case _ => None
     }
   }
+  
+  case object Abort extends Suggestion("Abort proof") {
+    override def apply(e: Expr): Attempt[(Expr, Theorem)] = throw new IllegalStateException("Should not even try to call this")
+  }
 
   case object Pass extends Suggestion("Do nothing") {
     override def apply(e: Expr): Attempt[(Expr, Theorem)] = Success((e, truth))

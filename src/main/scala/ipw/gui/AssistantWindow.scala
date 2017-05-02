@@ -86,7 +86,7 @@ trait AssistantWindow
         }
         
         onCloseRequest = handle {
-          println("CLOSED")
+          choosingEnd.write(Abort)
         }
       }
 

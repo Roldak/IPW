@@ -29,44 +29,47 @@ trait AssistedTheory
     val Equals(lhs, rhs) = expr
     val (choosingEnd, suggestingEnd) = SynchronizedChannel[ProofState, UpdateStep]()
     val willTerminate = Promise[Unit] // them lies tho
-    
+
     openAssistantWindow(choosingEnd, rhs, willTerminate.future)
 
-    val deque = new LinkedBlockingDeque[Option[(Expr, Theorem)]]
+    val proofAttempts = new LinkedBlockingDeque[Option[(Expr, Theorem)]]
 
     @tailrec
     def deepen(step: Expr, accumulatedProof: Theorem, thms: Map[String, Theorem]): Unit = {
-      deque.putFirst(Some((step, accumulatedProof)))
-      
+      proofAttempts.putFirst(Some((step, accumulatedProof)))
+
       val (suggestions, newThms) = analyse(step, thms, ihs)
 
       suggestingEnd.write((step, suggestions, newThms))
 
       val choice = suggestingEnd.read
 
-      choice(step) match {
-        case Success((next, stepProof)) =>
-          deepen(next, prove(lhs === next, accumulatedProof, stepProof), newThms)
+      if (choice != Abort) {
+        choice(step) match {
+          case Success((next, stepProof)) =>
+            deepen(next, prove(lhs === next, accumulatedProof, stepProof), newThms)
 
-        case Failure(reason) =>
-          println("Error while applying suggestion: " + reason)
-          deepen(step, accumulatedProof, thms) // try again
+          case Failure(reason) =>
+            println("Error while applying suggestion: " + reason)
+            deepen(step, accumulatedProof, thms) // try again
+        }
       }
     }
 
     @tailrec
     def proveForever(): Attempt[Theorem] = {
-      deque.takeFirst() match {
+      proofAttempts.takeFirst() match {
         case Some((expr, accumulatedProof)) => prove(expr === rhs) match {
           case Success(thm) => prove(lhs === rhs, accumulatedProof, thm)
           case _            => proveForever()
         }
-        case _ => Attempt.fail("Could not prove $lhs == $rhs")
+        case _ => Attempt.fail(s"Could not prove $lhs == $rhs")
       }
     }
 
     async {
       deepen(lhs, truth, thms)
+      proofAttempts.addFirst(None) // abort :'(
     }
 
     val res = proveForever()
