@@ -6,7 +6,7 @@ import ipw._
 
 object Main {
   val proofsFile = new java.io.File("test.iwf")
-  
+
   def mai(args: Array[String]): Unit = {
 
     val foldlID = FreshIdentifier("foldl")
@@ -158,7 +158,7 @@ object Main {
     val sum = FreshIdentifier("sum")
     val divBy2 = FreshIdentifier("divBy2")
     val mul = FreshIdentifier("mul")
-    
+
     val NatType = T(Nat)()
     val ZType = T(Z)()
     val SucType = T(Suc)()
@@ -197,24 +197,25 @@ object Main {
               ZType()
             } else_ {
               val predN = n.asInstOf(SucType).getField(pred)
-              SucType(E(sum)(predN)) // TODO: Change
+              E(add)(n, E(sum)(predN))
+              //SucType(E(sum)(predN)) // TODO: Change
             }
         }
 
         (args, retType, body)
     }
-    
+
     val divBy2Function = mkFunDef(divBy2)() {
       case _ =>
         val args = Seq("n" :: NatType)
         val retType = NatType
         val body: Seq[Variable] => Expr = {
           case Seq(n) =>
-            if_ (n.isInstOf(ZType)) {
+            if_(n.isInstOf(ZType)) {
               ZType()
             } else_ {
               val predN = n.asInstOf(SucType).getField(pred)
-              if_ (predN.isInstOf(ZType)) {
+              if_(predN.isInstOf(ZType)) {
                 ZType()
               } else_ {
                 val predPredN = predN.asInstOf(SucType).getField(pred)
@@ -224,9 +225,9 @@ object Main {
         }
         (args, retType, body)
     }
-    
+
     val mulFunction = mkFunDef(mul)() {
-      case _ => 
+      case _ =>
         val args = Seq("m" :: NatType, "n" :: NatType)
         val retType = NatType
         val body: Seq[Variable] => Expr = {
@@ -257,14 +258,16 @@ object Main {
         E(sum)(n) === (n * (n + E(BigInt(1)))) / E(BigInt(2))
       }
     }*/
-    
+
     //println(evaluated(E(divBy2)(SucType(SucType(SucType(SucType(ZType())))))))
-    println(evaluated(E(mul)(SucType(SucType(ZType())), SucType(SucType(SucType(ZType()))))))
+    //println(evaluated(E(mul)(SucType(SucType(ZType())), SucType(SucType(SucType(ZType()))))))
 
     def sum_(n: Expr) = E(sum)(n)
     def add_(m: Expr, n: Expr) = E(add)(m, n)
-
-    val thm = structuralInduction(m => forall("n" :: NatType)(n => add_(m, n) === add_(n, m)), "m" :: NatType) {
+    def mul_(m: Expr, n: Expr) = E(mul)(m, n)
+    def div2(n: Expr) = E(divBy2)(n)
+    /*
+    val commu = structuralInduction(m => forall("n" :: NatType)(n => add_(m, n) === add_(n, m)), "m" :: NatType) {
       case (ihs, _) =>
         ihs.expression match {
           case C(`Suc`, mpred) =>
@@ -300,8 +303,58 @@ object Main {
               IPWprove(add_(ihs.expression, n) === add_(n, ihs.expression), proofsFile, Map("Lemma" -> lemma))
             }
         }
+    }*/
+
+    val div2lemma = forallI("n" :: NatType) { n =>
+      prove(SucType(div2(n)) === div2(SucType(SucType(n))))
     }
 
-    println(thm)
+    /*val add1lemma1 = structuralInduction(m => forall("m" :: NatType) { n => SucType(add_(m, n)) === add_(SucType(m), n) }, "m" :: NatType) {
+      case (ihs, _) =>
+        val m = ihs.expression
+        m match {
+          case C(`Suc`, pred) =>
+            forallI("n" :: NatType) { n =>
+              IPWprove(SucType(SucType(add_(m, n))) === add_(SucType(m), SucType(n)), proofsFile, Map.empty, Some(ihs))
+            }
+
+          case C(`Z`) => trivial
+        }
+    }*/
+/*
+    val add1leftlemma = forallI("m" :: NatType, "n" :: NatType) { (m, n) =>
+      prove(SucType(add_(m, n)) === add_(SucType(m), n))
+    }
+*/
+    val add1rightlemma = structuralInduction(m => forall("n" :: NatType) { n => SucType(add_(m, n)) === add_(m, SucType(n)) }, "m" :: NatType) {
+      case (ihs, goal) =>
+        val m = ihs.expression
+        val proof: Attempt[Witness] = m match {
+          case C(`Suc`, pred) =>
+            forallI("n" :: NatType) { n =>
+              IPWprove(SucType(add_(m, n)) === add_(m, SucType(n)), proofsFile, Map.empty, Some(ihs))
+            }
+
+          case C(`Z`) => trivial
+        }
+        println(proof)
+        println(proof.extractTheorem(goal))
+        proof
+    }
+
+    println(add1rightlemma)
+    /*
+    val thm = structuralInduction(n => sum_(n) === div2(mul_(SucType(n), n)), "n" :: NatType) {
+      case (ihs, _) =>
+        ihs.expression match {
+          case C(`Suc`, pred) =>
+            val n = ihs.expression
+            IPWprove(sum_(n) === div2(mul_(SucType(n), n)), proofsFile, Map("div by 2 lemma" -> div2lemma, "add 1 left lemma" -> add1leftlemma), Some(ihs))
+
+          case C(`Z`) => trivial
+        }
+    }
+
+    println(thm)*/
   }
 }
