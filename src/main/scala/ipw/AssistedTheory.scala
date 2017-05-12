@@ -29,7 +29,7 @@ trait AssistedTheory
   protected[ipw]type ChoosingEnd = SynchronizedChannel.End[ProofState, UpdateStep]
   protected[ipw]type SuggestingEnd = SynchronizedChannel.End[UpdateStep, ProofState]
   protected[ipw]type StatusCallback = (Expr, Status) => Unit
-  private type ProofContext = (SuggestingEnd, Promise[Unit], BlockingDeque[Option[(Expr, Theorem)]], WindowTab)
+  private type ProofContext = (SuggestingEnd, Promise[Unit], WindowTab)
 
   protected[ipw] sealed abstract class Status(val stage: Int, val message: String)
   protected[ipw] case object InQueue extends Status(0, "In queue")
@@ -46,16 +46,17 @@ trait AssistedTheory
     case NewWindow =>
       val (choosingEnd, suggestingEnd) = SynchronizedChannel[ProofState, UpdateStep]()
       val willTerminate = Promise[Unit] // them lies tho
-      val proofAttempts = new LinkedBlockingDeque[Option[(Expr, Theorem)]]
       val tab = openAssistantWindow(choosingEnd, willTerminate.future)
-      f(suggestingEnd, willTerminate, proofAttempts, Await.result(tab, Duration.Inf))
-      
+      f(suggestingEnd, willTerminate, Await.result(tab, Duration.Inf))
+
     case Following(ctx) => f(ctx)
   }
 
   def IPWproveEq(lhs: Expr, rhs: Expr, source: JFile, thms: Map[String, Theorem],
-               ihs: Option[StructuralInductionHypotheses] = None, guiCtx: GUIContext = NewWindow): Attempt[Theorem] = onGUITab(guiCtx) {
-    case (suggestingEnd, willTerminate, proofAttempts, tab) =>
+                 ihs: Option[StructuralInductionHypotheses] = None, guiCtx: GUIContext = NewWindow): Attempt[Theorem] = onGUITab(guiCtx) {
+    case (suggestingEnd, willTerminate, tab) =>
+
+      val proofAttempts = new LinkedBlockingDeque[Option[(Expr, Theorem)]]
 
       def updateStatus(e: Expr, status: Status): Unit = {
         tab.statusCallback(e, status)
@@ -115,11 +116,28 @@ trait AssistedTheory
 
   def IPWprove(expr: Expr, source: JFile, thms: Map[String, Theorem],
                ihs: Option[StructuralInductionHypotheses] = None, guiCtx: GUIContext = NewWindow): Attempt[Theorem] = onGUITab(guiCtx) {
-    case proofCtx @ (_, _, _, tab) => expr match {
-      case Equals(lhs, rhs)   => IPWproveEq(lhs, rhs, source, thms, ihs, Following(proofCtx))
-      case Forall(vals, body) =>
-        val qf = IPWprove(body, source, thms, ihs, Following(proofCtx))
-        vals.foldLeft(qf)((body, v) => forallI(v)(x => body))
+    case proofCtx @ (suggestingEnd, willTerminate, tab) => expr match {
+      case Equals(lhs, rhs) => IPWproveEq(lhs, rhs, source, thms, ihs, Following(proofCtx))
+      case Forall(v :: vals, body) =>
+        v.tpe match {
+          case adt: ADTType => adt.lookupADT match {
+            case Some(adtDef) => println("INDUCTIVE : " + adtDef.definition.isInductive)
+            case _ => 
+          }
+          case _ => 
+        }
+        
+        val suggs = Seq(FixVariable(v))
+        suggestingEnd.write((expr, E(42), suggs, thms))
+
+        suggestingEnd.read match {
+          case FixVariable(_) => 
+            val thm = forallI(v)(_ => IPWprove(if (vals.isEmpty) body else Forall(vals, body), source, thms, ihs, Following(proofCtx)))
+            
+            println(prettyPrint(thm.expression, PrinterOptions(0, false, true)))
+            thm
+          case other => throw new IllegalStateException(s"Suggestion ${other} is illegal in this context")
+        }
     }
 
   }

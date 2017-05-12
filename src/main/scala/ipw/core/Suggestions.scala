@@ -38,6 +38,10 @@ trait Suggestions { theory: AssistedTheory =>
   case object Pass extends Suggestion("Do nothing") {
     override def apply(e: Expr): Attempt[(Expr, Theorem)] = Success((e, truth))
   }
+  
+  case class FixVariable(v: ValDef) extends Suggestion(s"Fix variable ${v.id}") {
+    override def apply(e: Expr): Attempt[(Expr, Theorem)] = throw new IllegalStateException("Should not even try to call this")
+  }
 
   case class ExpandInvocation(val inv: FunctionInvocation) extends Suggestion(s"Expand invocation of ${inv.id}") {
     val evaluator = PartialEvaluator.default(program, Some(inv))

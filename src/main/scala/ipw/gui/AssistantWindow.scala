@@ -42,9 +42,11 @@ trait AssistantWindow
       val theoremPane = new ExpressionPane(12)
 
       def onSelectSuggestion(s: Suggestion) = () => {
-        choosingEnd.write(s)
         expressionPane.installMode(Default)
-        Platform.runLater { suggestionBuffer.clear() }
+        Platform.runLater {
+          suggestionBuffer.clear()
+          choosingEnd.write(s)
+        }
       }
 
       val dialogStage = new Stage { outer =>
@@ -97,6 +99,7 @@ trait AssistantWindow
       // forever read inputs from the driver (suggestions, etc.) and update view
       asyncForever {
         val (expr, goal, suggs, thms) = choosingEnd.read
+
         Platform.runLater {
           val elem = expressionPane.addElement(expr)
           elemStatus.get(expr) foreach (elem.right = _)
@@ -106,7 +109,7 @@ trait AssistantWindow
 
           theoremPane.clear
           thms foreach { case (name, thm) => theoremPane.addElement(thm.expression) }
-          
+
           expressionPane.ResultBox.setExpr(goal)
         }
       }
