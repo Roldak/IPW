@@ -32,7 +32,7 @@ trait Suggestions { theory: AssistedTheory =>
   }
   
   case object Abort extends Suggestion("Abort proof") {
-    override def apply(e: Expr): Attempt[(Expr, Theorem)] = throw new IllegalStateException("Should not even try to call this")
+    override def apply(e: Expr) = throw new IllegalStateException("Should not even try to call this")
   }
 
   case object Pass extends Suggestion("Do nothing") {
@@ -40,7 +40,11 @@ trait Suggestions { theory: AssistedTheory =>
   }
   
   case class FixVariable(v: ValDef) extends Suggestion(s"Fix variable ${v.id}") {
-    override def apply(e: Expr): Attempt[(Expr, Theorem)] = throw new IllegalStateException("Should not even try to call this")
+    override def apply(e: Expr) = throw new IllegalStateException("Should not even try to call this")
+  }
+  
+  case class StructuralInduction(v: ValDef) extends Suggestion(s"Structural induction on ${v.id}") {
+    override def apply(e: Expr) = throw new IllegalStateException("Should not even try to call this") 
   }
 
   case class ExpandInvocation(val inv: FunctionInvocation) extends Suggestion(s"Expand invocation of ${inv.id}") {

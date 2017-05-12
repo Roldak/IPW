@@ -119,23 +119,31 @@ trait AssistedTheory
     case proofCtx @ (suggestingEnd, willTerminate, tab) => expr match {
       case Equals(lhs, rhs) => IPWproveEq(lhs, rhs, source, thms, ihs, Following(proofCtx))
       case Forall(v :: vals, body) =>
-        v.tpe match {
+        val structInd = v.tpe match {
           case adt: ADTType => adt.lookupADT match {
-            case Some(adtDef) => println("INDUCTIVE : " + adtDef.definition.isInductive)
-            case _ => 
+            case Some(adtDef) =>
+              if (adtDef.definition.isInductive) Seq(StructuralInduction(v))
+              else Seq()
+            case _ => Seq()
           }
-          case _ => 
+          case _ => Seq()
         }
-        
-        val suggs = Seq(FixVariable(v))
+
+        val suggs = structInd :+ FixVariable(v)
         suggestingEnd.write((expr, E(42), suggs, thms))
 
         suggestingEnd.read match {
-          case FixVariable(_) => 
+          case FixVariable(_) =>
             val thm = forallI(v)(_ => IPWprove(if (vals.isEmpty) body else Forall(vals, body), source, thms, ihs, Following(proofCtx)))
-            
+
             println(prettyPrint(thm.expression, PrinterOptions(0, false, true)))
             thm
+
+          case StructuralInduction(_) =>
+            structuralInduction(expr, v) {
+              case (ihs, goal) => IPWprove(goal.expression, source, thms, Some(ihs), Following(proofCtx))
+            }
+
           case other => throw new IllegalStateException(s"Suggestion ${other} is illegal in this context")
         }
     }
