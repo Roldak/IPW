@@ -20,7 +20,7 @@ import scalafx.util.StringConverter
 import ipw.concurrent.Utils._
 import scala.concurrent.duration.Duration
 import scala.concurrent._
-import scala.collection.mutable.{Map => MutableMap}
+import scala.collection.mutable.{ Map => MutableMap }
 
 trait AssistantWindow
     extends Rendering
@@ -31,15 +31,15 @@ trait AssistantWindow
 
   new JFXPanel() // force init
 
-  def openAssistantWindow(choosingEnd: ChoosingEnd, goal: Expr, done: Future[Unit]): Future[StatusCallback] = {
-    val statusPromise = Promise[StatusCallback]
-    
+  protected[ipw] case class WindowTab(statusCallback: StatusCallback)
+
+  def openAssistantWindow(choosingEnd: ChoosingEnd, done: Future[Unit]): Future[WindowTab] = {
+    val tabPromise = Promise[WindowTab]
+
     Platform.runLater {
       val suggestionBuffer = new ObservableBuffer[(String, Seq[Suggestion])]
       val expressionPane = new ExpressionPane(14)
       val theoremPane = new ExpressionPane(12)
-      
-      expressionPane.ResultBox.setExpr(goal)
 
       def onSelectSuggestion(s: Suggestion) = () => {
         choosingEnd.write(s)
@@ -72,7 +72,7 @@ trait AssistantWindow
                     if (newValue._2.size > 1) {
                       val validSuggs = newValue._2 flatMap {
                         case s @ ExprTransformingSuggestion(expr) => Seq((expr, PreviewableSuggestion.unapply(s), onSelectSuggestion(s)))
-                        case _ => Seq()
+                        case _                                    => Seq()
                       }
                       expressionPane.installMode(SelectingInExpression(expressionPane.lastRenderer, validSuggs))
                     } else {
@@ -86,16 +86,17 @@ trait AssistantWindow
             }
           }
         }
-        
+
         onCloseRequest = handle {
           choosingEnd.write(Abort)
         }
       }
-      
+
       val elemStatus = MutableMap[Expr, StatusText]()
 
+      // forever read inputs from the driver (suggestions, etc.) and update view
       asyncForever {
-        val (expr, suggs, thms) = choosingEnd.read
+        val (expr, goal, suggs, thms) = choosingEnd.read
         Platform.runLater {
           val elem = expressionPane.addElement(expr)
           elemStatus.get(expr) foreach (elem.right = _)
@@ -105,28 +106,34 @@ trait AssistantWindow
 
           theoremPane.clear
           thms foreach { case (name, thm) => theoremPane.addElement(thm.expression) }
+          
+          expressionPane.ResultBox.setExpr(goal)
         }
       }
 
+      // automatically close window when notified that the theorem has been proved
       async {
         Await.ready(done, Duration.Inf)
         Platform.runLater { dialogStage.close() }
       }
-      
-      statusPromise.success { (e: Expr, status: Status) =>  
-        Platform.runLater {
-          val statusText = elemStatus.getOrElseUpdate(e, new StatusText)
-          expressionPane.elementsForExpr(e) foreach (_.right = statusText)
-          statusText.updateWith(status)
+
+      // "return" a callback to the driver which he can call to update on the status of some proof steps
+      tabPromise.success {
+        WindowTab { (e: Expr, status: Status) =>
+          Platform.runLater {
+            val statusText = elemStatus.getOrElseUpdate(e, new StatusText)
+            expressionPane.elementsForExpr(e) foreach (_.right = statusText)
+            statusText.updateWith(status)
+          }
         }
       }
-      
+
       dialogStage.showAndWait()
     }
-    
-    statusPromise.future
+
+    tabPromise.future
   }
-  
+
   private class StatusText extends Text {
     private var stage: Int = -1
     def updateWith(status: Status): Unit = {
