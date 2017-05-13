@@ -106,7 +106,10 @@ trait AssistantWindow
             suggestionBuffer ++= suggs.groupBy(_.descr).toSeq
 
             theoremPane.clear
-            thms foreach { case (name, thm) => theoremPane.addElement(thm.expression) }
+            thms foreach { case (name, thm) => 
+              val thmElem = theoremPane.addElement(thm.expression)
+              thmElem.right = new Text(s" <$name>")
+            }
 
             expressionPane.ResultBox.setExpr(goal)
           }
