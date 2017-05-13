@@ -47,13 +47,15 @@ trait AssistedTheory
       val (choosingEnd, suggestingEnd) = SynchronizedChannel[ProofState, UpdateStep]()
       val willTerminate = Promise[Unit] // them lies tho
       val tab = openAssistantWindow(choosingEnd, willTerminate.future)
-      f(suggestingEnd, willTerminate, Await.result(tab, Duration.Inf))
+      val res = f(suggestingEnd, willTerminate, Await.result(tab, Duration.Inf))
+      willTerminate.success(())
+      res
 
     case Following(ctx) => f(ctx)
   }
 
   def IPWproveEq(lhs: Expr, rhs: Expr, source: JFile, thms: Map[String, Theorem],
-                 ihs: Option[StructuralInductionHypotheses] = None, guiCtx: GUIContext = NewWindow): Attempt[Theorem] = onGUITab(guiCtx) {
+                 ihs: Seq[StructuralInductionHypotheses] = Nil, guiCtx: GUIContext = NewWindow): Attempt[Theorem] = onGUITab(guiCtx) {
     case (suggestingEnd, willTerminate, tab) =>
 
       val proofAttempts = new LinkedBlockingDeque[Option[(Expr, Theorem)]]
@@ -109,13 +111,11 @@ trait AssistedTheory
         proofAttempts.addFirst(None) // abort :'(
       }
 
-      val res = proveForever()
-      willTerminate.success(())
-      res
+      proveForever()
   }
 
   def IPWprove(expr: Expr, source: JFile, thms: Map[String, Theorem],
-               ihs: Option[StructuralInductionHypotheses] = None, guiCtx: GUIContext = NewWindow): Attempt[Theorem] = onGUITab(guiCtx) {
+               ihs: Seq[StructuralInductionHypotheses] = Nil, guiCtx: GUIContext = NewWindow): Attempt[Theorem] = onGUITab(guiCtx) {
     case proofCtx @ (suggestingEnd, willTerminate, tab) => expr match {
       case Equals(lhs, rhs) => IPWproveEq(lhs, rhs, source, thms, ihs, Following(proofCtx))
       case Forall(v :: vals, body) =>
@@ -134,14 +134,11 @@ trait AssistedTheory
 
         suggestingEnd.read match {
           case FixVariable(_) =>
-            val thm = forallI(v)(_ => IPWprove(if (vals.isEmpty) body else Forall(vals, body), source, thms, ihs, Following(proofCtx)))
-
-            println(prettyPrint(thm.expression, PrinterOptions(0, false, true)))
-            thm
+            forallI(v)(_ => IPWprove(if (vals.isEmpty) body else Forall(vals, body), source, thms, ihs, Following(proofCtx)))
 
           case StructuralInduction(_) =>
             structuralInduction(expr, v) {
-              case (ihs, goal) => IPWprove(goal.expression, source, thms, Some(ihs), Following(proofCtx))
+              case (tihs, goal) => IPWprove(goal.expression, source, thms, ihs :+ tihs, Following(proofCtx))
             }
 
           case other => throw new IllegalStateException(s"Suggestion ${other} is illegal in this context")

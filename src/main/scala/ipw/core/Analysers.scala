@@ -60,16 +60,17 @@ trait Analysers { theory: AssistedTheory =>
 
   private def collectInvocations(e: Expr): Seq[Suggestion] = functionCallsOf(e).map(new ExpandInvocation(_)).toSeq
 
-  private def findInductiveHypothesisApplication(e: Expr, ihs: StructuralInductionHypotheses): Map[String, Theorem] = {
-    val ihsType = ihs.expression.getType
-
+  private def findInductiveHypothesisApplication(e: Expr, ihs: Seq[StructuralInductionHypotheses]): Map[String, Theorem] = {
+    val ihset = ihs.toSet
     val thms = collect[(String, Theorem)] { e: Expr =>
-      if (ihs.isInner(e)) {
-        ihs.hypothesis(e) match {
-          case Success(thm) => Set((s"IH on `$e`", thm))
-          case Failure(_)   => Set()
-        }
-      } else Set()
+      ihset.flatMap { ihs =>
+        if (ihs.isInner(e)) {
+          ihs.hypothesis(e) match {
+            case Success(thm) => Set((s"IH on `$e`", thm))
+            case Failure(_)   => Set[(String, Theorem)]()
+          }
+        } else Set[(String, Theorem)]()
+      }
     }(e)
 
     thms.toMap
@@ -155,8 +156,8 @@ trait Analysers { theory: AssistedTheory =>
     }
   }
 
-  def analyse(e: Expr, thms: Map[String, Theorem], ihs: Option[StructuralInductionHypotheses]): (Seq[Suggestion], Map[String, Theorem]) = {
-    val findInduct = ihs.map(findInductiveHypothesisApplication(e, _)).getOrElse(Map())
+  def analyse(e: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses]): (Seq[Suggestion], Map[String, Theorem]) = {
+    val findInduct = findInductiveHypothesisApplication(e, ihs)
     val newThms = thms ++ findInduct
     (collectInvocations(e) ++ findTheoremApplications(e, newThms), newThms)
   }
