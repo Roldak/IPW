@@ -7,7 +7,7 @@ import ipw._
 object Main {
   val proofsFile = new java.io.File("test.iwf")
 
-  def mai(args: Array[String]): Unit = {
+  def main(args: Array[String]): Unit = {
 
     val foldlID = FreshIdentifier("foldl")
     val foldrID = FreshIdentifier("foldr")
@@ -77,72 +77,71 @@ object Main {
       implI(isMonoid(f, z)) { isMonoid =>
         val Seq(isAssoc, isUnit) = andE(isMonoid): Seq[Theorem]
 
-        val lemma = structuralInduction((l: Expr) => forall("x" :: A) {
+        val lemma = IPWprove(
+          forall("l" :: ListA, "x" :: A)((l, x) => foldl(f, x, l) === f(x, foldl(f, z, l))),
+          proofsFile,
+          Map("Associativity of `f`" -> isAssoc,
+            "Unity of `f`" -> isUnit))
+        /*
+        val lemma2 = structuralInduction((l: Expr) => forall("x" :: A) {
           x => foldl(f, x, l) === f(x, foldl(f, z, l))
         }, "l" :: ListA) {
           case (ihs, goal) =>
             ihs.expression match {
               case C(`cons`, h, t) =>
                 forallI("x" :: A) { x =>
-                  /*foldl(f, x, ihs.expression) ==|
-                trivial |
-                foldl(f, f(x, h), t) ==|
-                forallE(ihs.hypothesis(t))(f(x, h)) |
-                f(f(x, h), foldl(f, z, t)) ==|
-                forallE(isAssoc)(x, h, foldl(f, z, t)) |
-                f(x, f(h, foldl(f, z, t))) ==|
-                forallE(ihs.hypothesis(t))(h) |
-                f(x, foldl(f, h, t)) ==|
-                forallE(isUnit)(h) |
-                f(x, foldl(f, f(z, h), t)) ==|
-                trivial |
-                f(x, foldl(f, z, ihs.expression))*/
-                  IPWprove(
-                    foldl(f, x, ihs.expression) === f(x, foldl(f, z, ihs.expression)),
-                    proofsFile,
-                    Map("Associativity of `f`" -> isAssoc,
-                      "Unity of `f`" -> isUnit),
-                    Some(ihs))
+                  foldl(f, x, ihs.expression) ==|
+                    trivial |
+                    foldl(f, f(x, h), t) ==|
+                    forallE(ihs.hypothesis(t))(f(x, h)) |
+                    f(f(x, h), foldl(f, z, t)) ==|
+                    forallE(isAssoc)(x, h, foldl(f, z, t)) |
+                    f(x, f(h, foldl(f, z, t))) ==|
+                    forallE(ihs.hypothesis(t))(h) |
+                    f(x, foldl(f, h, t)) ==|
+                    forallE(isUnit)(h) |
+                    f(x, foldl(f, f(z, h), t)) ==|
+                    trivial |
+                    f(x, foldl(f, z, ihs.expression))
                 }
 
               case C(`nil`) => isUnit
             }
         }
-
+*/
         println(lemma)
-
+        /*
         structuralInduction((l: Expr) => foldl(f, z, l) === foldr(f, z, l), "l" :: ListA) {
           case (ihs, goal) =>
             ihs.expression match {
               case C(`cons`, h, t) =>
-                /*foldl(f, z, ihs.expression) ==|
-              trivial |
-              foldl(f, f(z, h), t) ==|
-              forallE(isUnit)(h) |
-              foldl(f, h, t) ==|
-              forallE(forallE(lemma)(t))(h) |
-              f(h, foldl(f, z, t)) ==|
-              ihs.hypothesis(t) |
-              f(h, foldr(f, z, t)) ==|
-              trivial |
-              foldr(f, z, ihs.expression)
-              */
-                IPWprove(
-                  foldl(f, z, ihs.expression) === foldr(f, z, ihs.expression),
-                  proofsFile,
-                  Map("Lemma" -> lemma, "unity of `f`" -> isUnit, "Associativity of `f`" -> isAssoc),
-                  Some(ihs))
+                foldl(f, z, ihs.expression) ==|
+                  trivial |
+                  foldl(f, f(z, h), t) ==|
+                  forallE(isUnit)(h) |
+                  foldl(f, h, t) ==|
+                  forallE(forallE(lemma)(t))(h) |
+                  f(h, foldl(f, z, t)) ==|
+                  ihs.hypothesis(t) |
+                  f(h, foldr(f, z, t)) ==|
+                  trivial |
+                  foldr(f, z, ihs.expression)
 
               case C(`nil`) => trivial
             }
-        }
+        }*/
+
+        IPWprove(
+          forall("l" :: ListA)(l => foldl(f, z, l) === foldr(f, z, l)),
+          proofsFile,
+          Map("Lemma" -> lemma, "unity of `f`" -> isUnit, "Associativity of `f`" -> isAssoc))
       }
     }
 
     println(theorem)
   }
 
-  def main(args: Array[String]): Unit = {
+  def mai(args: Array[String]): Unit = {
     val Nat = FreshIdentifier("Nat")
     val Z = FreshIdentifier("Z")
     val Suc = FreshIdentifier("Suc")
@@ -321,25 +320,25 @@ object Main {
           case C(`Z`) => trivial
         }
     }*/
-/*
+    /*
     val add1leftlemma = forallI("m" :: NatType, "n" :: NatType) { (m, n) =>
       prove(SucType(add_(m, n)) === add_(SucType(m), n))
     }
 */
+
     val add1rightlemma = structuralInduction(m => forall("n" :: NatType) { n => SucType(add_(m, n)) === add_(m, SucType(n)) }, "m" :: NatType) {
       case (ihs, goal) =>
-        val m = ihs.expression
-        val proof: Attempt[Witness] = m match {
+        ihs.expression match {
           case C(`Suc`, pred) =>
-            forallI("n" :: NatType) { n =>
-              IPWprove(SucType(add_(m, n)) === add_(m, SucType(n)), proofsFile, Map.empty, Some(ihs))
+            /*val thm = */ forallI("n" :: NatType) { n =>
+              IPWprove(SucType(add_(ihs.expression, n)) === add_(ihs.expression, SucType(n)), proofsFile, Map.empty, Seq(ihs))
             }
+          /*println(thm)
+            println(prove(goal.expression, thm))
+            thm*/
 
           case C(`Z`) => trivial
         }
-        println(proof)
-        println(proof.extractTheorem(goal))
-        proof
     }
 
     println(add1rightlemma)

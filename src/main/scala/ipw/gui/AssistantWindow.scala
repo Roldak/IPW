@@ -32,7 +32,7 @@ trait AssistantWindow
   new JFXPanel() // force init
 
   protected[ipw] class Window(protected val stage: Stage, protected val tabAppender: Tab => Unit) { theWindow =>
-    def openNewTab(title: String, choosingEnd: ChoosingEnd, done: Future[Unit]): Future[WindowTab] = {
+    def openNewTab(title: String, choosingEnd: ChoosingEnd): Future[WindowTab] = {
       val tabPromise = Promise[WindowTab]
 
       Platform.runLater {
@@ -112,12 +112,6 @@ trait AssistantWindow
           }
         }
 
-        // automatically close tab when notified that the theorem has been proved
-        async {
-          Await.ready(done, Duration.Inf)
-          Platform.runLater { tab.onClosed.value.handle(null) }
-        }
-
         // "return" a callback to the driver which he can call to update on the status of some proof steps
         tabPromise.success {
           WindowTab({ (e: Expr, status: Status) =>
@@ -126,7 +120,7 @@ trait AssistantWindow
               expressionPane.elementsForExpr(e) foreach (_.right = statusText)
               statusText.updateWith(status)
             }
-          }, theWindow)
+          }, theWindow, title)
         }
       }
 
@@ -134,9 +128,9 @@ trait AssistantWindow
     }
   }
 
-  protected[ipw] case class WindowTab(statusCallback: StatusCallback, window: Window)
+  protected[ipw] case class WindowTab(statusCallback: StatusCallback, window: Window, title: String)
 
-  def openAssistantWindow(): Future[Window] = {
+  def openAssistantWindow(done: Future[Unit]): Future[Window] = {
     val windowPromise = Promise[Window]
 
     Platform.runLater {
@@ -151,7 +145,7 @@ trait AssistantWindow
           stylesheets = Seq("file:resources/assistantWindow.css")
           root = tabPane
         }
-        
+
         onCloseRequest = handle {
           tabsList.foreach { tab => tab.onClosed.value.handle(null) }
         }
@@ -160,8 +154,15 @@ trait AssistantWindow
       def appendTab(x: Tab) = {
         tabsList.append(x)
         tabPane.tabs = tabsList
+        tabPane.selectionModel.value.select(x)
       }
 
+      // automatically close tab when notified that the theorem has been proved
+      async {
+        Await.ready(done, Duration.Inf)
+        Platform.runLater { stage.close() }
+      }
+      
       // "return" a callback to the driver which he can call to update on the status of some proof steps
       windowPromise.success(new Window(stage, appendTab))
 
