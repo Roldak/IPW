@@ -39,18 +39,20 @@ trait AssistedTheory
 
   sealed abstract class GUIContext
   case object NewWindow extends GUIContext
-  private case class NewTab() extends GUIContext
+  private case class NewTab(win: Window) extends GUIContext
   private case class Following(ctx: ProofContext) extends GUIContext
 
   private def onGUITab[T](ctx: GUIContext)(f: ProofContext => T): T = ctx match {
-    case NewWindow =>
+    case NewWindow => onGUITab(NewTab(Await.result(openAssistantWindow(), Duration.Inf)))(f)
+
+    case NewTab(window) =>
       val (choosingEnd, suggestingEnd) = SynchronizedChannel[ProofState, UpdateStep]()
       val willTerminate = Promise[Unit] // them lies tho
-      val tab = openAssistantWindow(choosingEnd, willTerminate.future)
+      val tab = window.openNewTab("tab", choosingEnd, willTerminate.future)
       val res = f(suggestingEnd, willTerminate, Await.result(tab, Duration.Inf))
       willTerminate.success(())
       res
-
+      
     case Following(ctx) => f(ctx)
   }
 
@@ -73,6 +75,7 @@ trait AssistedTheory
 
         suggestingEnd.write((step, rhs, suggestions, newThms))
 
+        println(s"Thread #${Thread.currentThread().getId}: reading")
         val choice = suggestingEnd.read
 
         if (choice != Abort) {
@@ -138,9 +141,11 @@ trait AssistedTheory
 
           case StructuralInduction(_) =>
             structuralInduction(expr, v) {
-              case (tihs, goal) => IPWprove(goal.expression, source, thms, ihs :+ tihs, Following(proofCtx))
+              case (tihs, goal) => IPWprove(goal.expression, source, thms, ihs :+ tihs, NewTab(tab.window))
             }
 
+          case Abort => Attempt.fail("Operation aborted")
+          
           case other => throw new IllegalStateException(s"Suggestion ${other} is illegal in this context")
         }
     }

@@ -31,31 +31,26 @@ trait AssistantWindow
 
   new JFXPanel() // force init
 
-  protected[ipw] case class WindowTab(statusCallback: StatusCallback)
+  protected[ipw] class Window(protected val stage: Stage, protected val tabAppender: Tab => Unit) { theWindow =>
+    def openNewTab(title: String, choosingEnd: ChoosingEnd, done: Future[Unit]): Future[WindowTab] = {
+      val tabPromise = Promise[WindowTab]
 
-  def openAssistantWindow(choosingEnd: ChoosingEnd, done: Future[Unit]): Future[WindowTab] = {
-    val tabPromise = Promise[WindowTab]
+      Platform.runLater {
+        val suggestionBuffer = new ObservableBuffer[(String, Seq[Suggestion])]
+        val expressionPane = new ExpressionPane(14)
+        val theoremPane = new ExpressionPane(12)
 
-    Platform.runLater {
-      val suggestionBuffer = new ObservableBuffer[(String, Seq[Suggestion])]
-      val expressionPane = new ExpressionPane(14)
-      val theoremPane = new ExpressionPane(12)
-
-      def onSelectSuggestion(s: Suggestion) = () => {
-        expressionPane.installMode(Default)
-        Platform.runLater {
-          suggestionBuffer.clear()
-          choosingEnd.write(s)
+        def onSelectSuggestion(s: Suggestion) = () => {
+          expressionPane.installMode(Default)
+          Platform.runLater {
+            suggestionBuffer.clear()
+            choosingEnd.write(s)
+          }
         }
-      }
 
-      val dialogStage = new Stage { outer =>
-        title = "IPW Assistant Window"
-        width = 1350
-        height = 800
-        scene = new Scene {
-          stylesheets = Seq("file:resources/assistantWindow.css")
-          root = new BorderPane { window =>
+        val tab = new Tab {
+          text = title
+          content = new BorderPane { window =>
             padding = Insets(20)
             center = new BorderPane {
               styleClass += "main-panel"
@@ -87,54 +82,93 @@ trait AssistantWindow
               prefWidth <== window.width * 1 / 3
             }
           }
+
+          onClosed = handle {
+            choosingEnd.write(Abort)
+          }
+
+          closable = false
         }
 
+        tabAppender(tab)
+
+        val elemStatus = MutableMap[Expr, StatusText]()
+
+        // forever read inputs from the driver (suggestions, etc.) and update view
+        asyncForever {
+          val (expr, goal, suggs, thms) = choosingEnd.read
+
+          Platform.runLater {
+            val elem = expressionPane.addElement(expr)
+            elemStatus.get(expr) foreach (elem.right = _)
+
+            suggestionBuffer.clear()
+            suggestionBuffer ++= suggs.groupBy(_.descr).toSeq
+
+            theoremPane.clear
+            thms foreach { case (name, thm) => theoremPane.addElement(thm.expression) }
+
+            expressionPane.ResultBox.setExpr(goal)
+          }
+        }
+
+        // automatically close tab when notified that the theorem has been proved
+        async {
+          Await.ready(done, Duration.Inf)
+          Platform.runLater { tab.onClosed.value.handle(null) }
+        }
+
+        // "return" a callback to the driver which he can call to update on the status of some proof steps
+        tabPromise.success {
+          WindowTab({ (e: Expr, status: Status) =>
+            Platform.runLater {
+              val statusText = elemStatus.getOrElseUpdate(e, new StatusText)
+              expressionPane.elementsForExpr(e) foreach (_.right = statusText)
+              statusText.updateWith(status)
+            }
+          }, theWindow)
+        }
+      }
+
+      tabPromise.future
+    }
+  }
+
+  protected[ipw] case class WindowTab(statusCallback: StatusCallback, window: Window)
+
+  def openAssistantWindow(): Future[Window] = {
+    val windowPromise = Promise[Window]
+
+    Platform.runLater {
+      val tabsList = new ObservableBuffer[Tab]()
+      val tabPane = new TabPane
+
+      val stage = new Stage { outer =>
+        title = "IPW Assistant Window"
+        width = 1350
+        height = 800
+        scene = new Scene {
+          stylesheets = Seq("file:resources/assistantWindow.css")
+          root = tabPane
+        }
+        
         onCloseRequest = handle {
-          choosingEnd.write(Abort)
+          tabsList.foreach { tab => tab.onClosed.value.handle(null) }
         }
       }
 
-      val elemStatus = MutableMap[Expr, StatusText]()
-
-      // forever read inputs from the driver (suggestions, etc.) and update view
-      asyncForever {
-        val (expr, goal, suggs, thms) = choosingEnd.read
-
-        Platform.runLater {
-          val elem = expressionPane.addElement(expr)
-          elemStatus.get(expr) foreach (elem.right = _)
-
-          suggestionBuffer.clear()
-          suggestionBuffer ++= suggs.groupBy(_.descr).toSeq
-
-          theoremPane.clear
-          thms foreach { case (name, thm) => theoremPane.addElement(thm.expression) }
-
-          expressionPane.ResultBox.setExpr(goal)
-        }
-      }
-
-      // automatically close window when notified that the theorem has been proved
-      async {
-        Await.ready(done, Duration.Inf)
-        Platform.runLater { dialogStage.close() }
+      def appendTab(x: Tab) = {
+        tabsList.append(x)
+        tabPane.tabs = tabsList
       }
 
       // "return" a callback to the driver which he can call to update on the status of some proof steps
-      tabPromise.success {
-        WindowTab { (e: Expr, status: Status) =>
-          Platform.runLater {
-            val statusText = elemStatus.getOrElseUpdate(e, new StatusText)
-            expressionPane.elementsForExpr(e) foreach (_.right = statusText)
-            statusText.updateWith(status)
-          }
-        }
-      }
+      windowPromise.success(new Window(stage, appendTab))
 
-      dialogStage.showAndWait()
+      stage.showAndWait()
     }
 
-    tabPromise.future
+    windowPromise.future
   }
 
   private class StatusText extends Text {
