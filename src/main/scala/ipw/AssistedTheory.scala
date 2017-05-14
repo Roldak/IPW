@@ -24,7 +24,7 @@ trait AssistedTheory
     with Suggestions
     with AssistantWindow { self =>
 
-  protected[ipw]type ProofState = (Expr, Expr, Seq[Suggestion], Map[String, Theorem])
+  protected[ipw]type ProofState = (Expr, Option[Expr], Seq[Suggestion], Map[String, Theorem])
   protected[ipw]type UpdateStep = Suggestion
   protected[ipw]type ChoosingEnd = SynchronizedChannel.End[ProofState, UpdateStep]
   protected[ipw]type SuggestingEnd = SynchronizedChannel.End[UpdateStep, ProofState]
@@ -74,7 +74,7 @@ trait AssistedTheory
 
         val (suggestions, newThms) = analyse(step, thms, ihs)
 
-        suggestingEnd.write((step, rhs, suggestions, newThms))
+        suggestingEnd.write((step, Some(rhs), suggestions, newThms))
 
         val choice = suggestingEnd.read
 
@@ -133,7 +133,7 @@ trait AssistedTheory
     case Forall(v :: vals, body) => onGUITab(guiCtx) {
       case proofCtx @ (suggestingEnd, tab) =>
         val suggs = analyseForall(v, body)
-        suggestingEnd.write((expr, E(42), suggs, thms))
+        suggestingEnd.write((expr, None, suggs, thms))
 
         suggestingEnd.read match {
           case FixVariable(_) =>
@@ -154,7 +154,7 @@ trait AssistedTheory
 
     case Implies(hyp, body) => onGUITab(guiCtx) {
       case proofCtx @ (suggestingEnd, tab) =>
-        suggestingEnd.write((expr, E(34), Seq(AssumeHypothesis(hyp)), thms))
+        suggestingEnd.write((expr, None, Seq(AssumeHypothesis(hyp)), thms))
 
         suggestingEnd.read match {
           case AssumeHypothesis(_) =>
