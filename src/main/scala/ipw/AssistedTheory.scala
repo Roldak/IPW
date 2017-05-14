@@ -127,7 +127,7 @@ trait AssistedTheory
 
     case And(exprs) => onGUITab(guiCtx) {
       case (_, tab) =>
-        andI(exprs.zipWithIndex map { case (e, i) => IPWprove(e, source, thms, ihs, NewTab(s"${tab.title}[$i]", tab.window)).get})
+        andI(exprs.zipWithIndex map { case (e, i) => IPWprove(e, source, thms, ihs, NewTab(s"${tab.title}[$i]", tab.window)).get })
     }
 
     case Forall(v :: vals, body) => onGUITab(guiCtx) {
@@ -151,16 +151,22 @@ trait AssistedTheory
           case other => throw new IllegalStateException(s"Suggestion ${other} is illegal in this context")
         }
     }
-    
+
     case Implies(hyp, body) => onGUITab(guiCtx) {
       case proofCtx @ (suggestingEnd, tab) =>
         suggestingEnd.write((expr, E(34), Seq(AssumeHypothesis(hyp)), thms))
-        
+
         suggestingEnd.read match {
           case AssumeHypothesis(_) =>
-            val thmName = promptTheoremName(hyp, "assumption")
-            implI(hyp)(assumption => IPWprove(body, source, thms + (thmName -> assumption), ihs, Following(proofCtx)))
-            
+            implI(hyp) { assumption =>
+              val hyps = assumption.expression match {
+                case And(exprs) if promptTheoremSplit(exprs) => andE(assumption).get
+                case _ => Seq(assumption)
+              }
+              val newThms = hyps map (h => (promptTheoremName(h.expression, "assumption"), h))
+              IPWprove(body, source, thms ++ newThms, ihs, Following(proofCtx))
+            }
+
           case other => throw new IllegalStateException(s"Suggestion ${other} is illegal in this context")
         }
     }

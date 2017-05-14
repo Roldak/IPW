@@ -181,7 +181,10 @@ trait Rendering { window: AssistantWindow =>
 
     case And(exprs) =>
       nary(exprs map buildFlow, " && ")
-      
+
+    case Or(exprs) =>
+      nary(exprs map buildFlow, " || ")
+
     case Operator(exprs, _) =>
       Seq(Code.TreeName(e.getClass.getSimpleName)) ++ nary(exprs map buildFlow, ", ", "(", ")")
   }

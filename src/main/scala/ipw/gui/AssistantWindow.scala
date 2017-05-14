@@ -21,6 +21,7 @@ import ipw.concurrent.Utils._
 import scala.concurrent.duration.Duration
 import scala.concurrent._
 import scala.collection.mutable.{ Map => MutableMap }
+import scalafx.scene.control.Alert.AlertType
 
 trait AssistantWindow
     extends Rendering
@@ -188,6 +189,20 @@ trait AssistantWindow
       name.success(dialog.showAndWait().getOrElse(default))
     }
     Await.result(name.future, Duration.Inf)
+  }
+
+  protected[ipw] def promptTheoremSplit(exprs: Seq[Expr]): Boolean = {
+    val choice = Promise[Boolean]
+    Platform.runLater {
+      val dialog = new Alert(AlertType.Confirmation) {
+        title = "Split Theorem"
+        headerText = exprs.zipWithIndex map { case (e, i) => s"${i + 1}. ${prettyPrint(e, PrinterOptions())}" } mkString("\n")
+        contentText = s"Do you want to split the theorem in ${exprs.size}?"
+      }
+
+      choice.success(dialog.showAndWait() map (_ == ButtonType.OK) getOrElse(false))
+    }
+    Await.result(choice.future, Duration.Inf)
   }
 
   private class StatusText extends Text {
