@@ -37,7 +37,7 @@ trait Rendering { window: AssistantWindow =>
   protected[gui] object Code {
     class Node(text: String)(implicit ctx: FlowContext) extends Text(text) { self =>
       val renderer = ctx.renderer
-      
+
       var expression: Expr = null
       var neighbors: Seq[Node] = null
 
@@ -85,11 +85,11 @@ trait Rendering { window: AssistantWindow =>
       onMouseEntered = handle {
         renderer.pane.getMode.onMouseEnteredNode(this)
       }
-      
+
       onMouseExited = handle {
         renderer.pane.getMode.onMouseExitedNode(this)
       }
-      
+
       onMouseClicked = handle {
         renderer.pane.getMode.onMouseClickedNode(this)
       }
@@ -119,19 +119,20 @@ trait Rendering { window: AssistantWindow =>
 
   protected object BinaryOperator {
     def unapply(e: Expr): Option[(Expr, Expr, String)] = e match {
-      case Equals(a, b) => Some((a, b, "=="))
-      case _            => None
+      case Equals(a, b)  => Some((a, b, "=="))
+      case Implies(a, b) => Some((a, b, "==>"))
+      case _             => None
     }
   }
 
   protected abstract class TextClickEvent extends EventHandler[MouseEvent]
 
-  protected def nary(exprs: Seq[Seq[Code.Node]], sep: String = ", ", init: String = "", closing: String = "", 
-      hideIfEmptyExprs: Boolean = false)(implicit ctx: FlowContext): Seq[Code.Node] = {
+  protected def nary(exprs: Seq[Seq[Code.Node]], sep: String = ", ", init: String = "", closing: String = "",
+                     hideIfEmptyExprs: Boolean = false)(implicit ctx: FlowContext): Seq[Code.Node] = {
     val initNode = if (init.isEmpty()) Seq() else Seq(Code.Operator(init))
     val exprNodes = if (exprs.isEmpty) Seq() else exprs.init.flatMap(_ :+ Code.Operator(sep)) ++ exprs.last
     val closingNode = if (closing.isEmpty()) Seq() else Seq(Code.Operator(closing))
-    
+
     if (exprNodes.isEmpty && hideIfEmptyExprs) Seq()
     else initNode ++ exprNodes ++ closingNode
   }
@@ -178,6 +179,9 @@ trait Rendering { window: AssistantWindow =>
           typeNode(v.tpe)
       }) ++ Seq(Dot, Space) ++ buildFlow(expr)(ctx withBoundVars (vals))
 
+    case And(exprs) =>
+      nary(exprs map buildFlow, " && ")
+      
     case Operator(exprs, _) =>
       Seq(Code.TreeName(e.getClass.getSimpleName)) ++ nary(exprs map buildFlow, ", ", "(", ")")
   }

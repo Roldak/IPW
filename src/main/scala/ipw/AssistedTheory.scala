@@ -158,7 +158,8 @@ trait AssistedTheory
         
         suggestingEnd.read match {
           case AssumeHypothesis(_) =>
-            implI(hyp)(assumption => IPWprove(body, source, thms + ("assumption" -> assumption), ihs, Following(proofCtx)))
+            val thmName = promptTheoremName(hyp, "assumption")
+            implI(hyp)(assumption => IPWprove(body, source, thms + (thmName -> assumption), ihs, Following(proofCtx)))
             
           case other => throw new IllegalStateException(s"Suggestion ${other} is illegal in this context")
         }

@@ -106,9 +106,10 @@ trait AssistantWindow
             suggestionBuffer ++= suggs.groupBy(_.descr).toSeq
 
             theoremPane.clear
-            thms foreach { case (name, thm) => 
-              val thmElem = theoremPane.addElement(thm.expression)
-              thmElem.right = new Text(s" <$name>")
+            thms foreach {
+              case (name, thm) =>
+                val thmElem = theoremPane.addElement(thm.expression)
+                thmElem.right = new Text(s" <$name>")
             }
 
             expressionPane.ResultBox.setExpr(goal)
@@ -133,7 +134,7 @@ trait AssistantWindow
 
   protected[ipw] case class WindowTab(statusCallback: StatusCallback, window: Window, title: String)
 
-  def openAssistantWindow(done: Future[Unit]): Future[Window] = {
+  protected[ipw] def openAssistantWindow(done: Future[Unit]): Future[Window] = {
     val windowPromise = Promise[Window]
 
     Platform.runLater {
@@ -165,7 +166,7 @@ trait AssistantWindow
         Await.ready(done, Duration.Inf)
         Platform.runLater { stage.close() }
       }
-      
+
       // "return" a callback to the driver which he can call to update on the status of some proof steps
       windowPromise.success(new Window(stage, appendTab))
 
@@ -173,6 +174,20 @@ trait AssistantWindow
     }
 
     windowPromise.future
+  }
+
+  protected[ipw] def promptTheoremName(expr: Expr, default: String): String = {
+    val name = Promise[String]
+    Platform.runLater {
+      val dialog = new TextInputDialog(defaultValue = default) {
+        title = "Assumption Name"
+        headerText = prettyPrint(expr, PrinterOptions())
+        contentText = "Please enter a name for the assumption:"
+      }
+
+      name.success(dialog.showAndWait().getOrElse(default))
+    }
+    Await.result(name.future, Duration.Inf)
   }
 
   private class StatusText extends Text {
