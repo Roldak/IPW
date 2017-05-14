@@ -51,28 +51,6 @@ protected[gui] trait ExpressionPanes { window: AssistantWindow =>
       def clearCache(): Unit = previewCache.clear()
     }
 
-    object ResultBox extends VBox {
-      private val separator = new BorderPane {
-        padding = Insets(30, 0, 30, 0)
-        minWidth <== scrollPane.width - 2
-        center = new Text {
-          text = "Apply suggestions from the panel on the right until the goal below is reached"
-          font = Font.font(15)
-        }
-      }
-
-      def setExpr(expr: Option[Expr]): Unit = expr match {
-        case Some(e) =>
-          val elem = Element(e, () => {})
-          elem.styleClass = Seq("goal-pane")
-          children = Seq(separator, elem)
-        case _ =>
-          children = Seq()
-      }
-
-      def clear(): Unit = {}
-    }
-
     private val box = new VBox
     private val elements = new ArrayBuffer[Element]
     private var mode: InputMode = Default
@@ -81,7 +59,7 @@ protected[gui] trait ExpressionPanes { window: AssistantWindow =>
     def getMode = mode
 
     content = new VBox {
-      children = Seq(box, PreviewBox, ResultBox)
+      children = Seq(box, PreviewBox)
     }
 
     def addElement(expr: Expr, onClick: () => Unit = () => {}): Element = {

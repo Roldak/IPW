@@ -97,7 +97,7 @@ trait AssistantWindow
 
         // forever read inputs from the driver (suggestions, etc.) and update view
         asyncForever {
-          val (expr, goal, suggs, thms) = choosingEnd.read
+          val (expr, suggs, thms) = choosingEnd.read
 
           Platform.runLater {
             val elem = expressionPane.addElement(expr)
@@ -112,8 +112,6 @@ trait AssistantWindow
                 val thmElem = theoremPane.addElement(thm.expression)
                 thmElem.right = new Text(s" <$name>")
             }
-
-            expressionPane.ResultBox.setExpr(goal)
           }
         }
 

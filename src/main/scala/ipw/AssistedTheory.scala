@@ -24,7 +24,7 @@ trait AssistedTheory
     with Suggestions
     with AssistantWindow { self =>
 
-  protected[ipw]type ProofState = (Expr, Option[Expr], Seq[Suggestion], Map[String, Theorem])
+  protected[ipw]type ProofState = (Expr, Seq[Suggestion], Map[String, Theorem])
   protected[ipw]type UpdateStep = Suggestion
   protected[ipw]type ChoosingEnd = SynchronizedChannel.End[ProofState, UpdateStep]
   protected[ipw]type SuggestingEnd = SynchronizedChannel.End[UpdateStep, ProofState]
@@ -57,7 +57,7 @@ trait AssistedTheory
     case Following(ctx) => f(ctx)
   }
 
-  def IPWproveEq(lhs: Expr, rhs: Expr, source: JFile, thms: Map[String, Theorem],
+  def IPWproveEq(expr: Expr, source: JFile, thms: Map[String, Theorem],
                  ihs: Seq[StructuralInductionHypotheses] = Nil, guiCtx: GUIContext = NewWindow("Proof")): Attempt[Theorem] = onGUITab(guiCtx) {
     case (suggestingEnd, tab) =>
 
@@ -74,14 +74,14 @@ trait AssistedTheory
 
         val (suggestions, newThms) = analyse(step, thms, ihs)
 
-        suggestingEnd.write((step, Some(rhs), suggestions, newThms))
+        suggestingEnd.write((step, suggestions, newThms))
 
         val choice = suggestingEnd.read
 
         if (choice != Abort) {
           choice(step) match {
             case Success((next, stepProof)) =>
-              deepen(next, prove(lhs === next, accumulatedProof, stepProof), newThms)
+              deepen(next, prove(expr === next, accumulatedProof, stepProof), newThms)
 
             case Failure(reason) =>
               println("Error while applying suggestion: " + reason)
@@ -93,24 +93,24 @@ trait AssistedTheory
       @tailrec
       def proveForever(): Attempt[Theorem] = {
         proofAttempts.takeFirst() match {
-          case Some((expr, accumulatedProof)) =>
-            updateStatus(expr, Proving)
-            prove(expr === rhs) match {
+          case Some((step, accumulatedProof)) =>
+            updateStatus(step, Proving)
+            prove(step) match {
               case Success(thm) =>
                 updateStatus(expr, ProofSucceeded)
-                prove(lhs === rhs, accumulatedProof, thm)
+                prove(expr, accumulatedProof, thm)
 
               case _ =>
                 updateStatus(expr, ProofFailed)
                 proveForever()
             }
 
-          case _ => Attempt.fail(s"Could not prove $lhs == $rhs")
+          case _ => Attempt.fail(s"Could not prove $expr")
         }
       }
 
       async {
-        deepen(lhs, truth, thms)
+        deepen(expr, truth, thms)
         proofAttempts.addFirst(None) // abort :'(
       }
 
@@ -120,7 +120,7 @@ trait AssistedTheory
   def IPWprove(expr: Expr, source: JFile, thms: Map[String, Theorem],
                ihs: Seq[StructuralInductionHypotheses] = Nil, guiCtx: GUIContext = NewWindow("Proof")): Attempt[Theorem] = expr match {
     case Equals(lhs, rhs) =>
-      IPWproveEq(lhs, rhs, source, thms, ihs, guiCtx)
+      IPWproveEq(lhs === rhs, source, thms, ihs, guiCtx)
 
     case Not(Not(e)) =>
       IPWprove(e, source, thms, ihs, guiCtx)
@@ -133,7 +133,7 @@ trait AssistedTheory
     case Forall(v :: vals, body) => onGUITab(guiCtx) {
       case proofCtx @ (suggestingEnd, tab) =>
         val suggs = analyseForall(v, body)
-        suggestingEnd.write((expr, None, suggs, thms))
+        suggestingEnd.write((expr, suggs, thms))
 
         suggestingEnd.read match {
           case FixVariable(_) =>
@@ -154,7 +154,7 @@ trait AssistedTheory
 
     case Implies(hyp, body) => onGUITab(guiCtx) {
       case proofCtx @ (suggestingEnd, tab) =>
-        suggestingEnd.write((expr, None, Seq(AssumeHypothesis(hyp)), thms))
+        suggestingEnd.write((expr, Seq(AssumeHypothesis(hyp)), thms))
 
         suggestingEnd.read match {
           case AssumeHypothesis(_) =>

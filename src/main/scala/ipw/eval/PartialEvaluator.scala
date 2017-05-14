@@ -128,8 +128,10 @@ trait PartialEvaluator
           case le                    => Implies(le, e(r))
         }
 
-      case Equals(le, re) =>
-        BooleanLiteral(e(le) == e(re))
+      case Equals(le, re) => (e(le), e(re)) match {
+        case (BooleanLiteral(ble), BooleanLiteral(bre)) => BooleanLiteral(ble == bre)
+        case (ele, ere) => Equals(ele, ere)
+      }
 
       case ADT(adt, args) =>
         val cc = ADT(adt, args.map(e))
