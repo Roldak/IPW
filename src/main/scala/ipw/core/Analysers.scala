@@ -10,7 +10,7 @@ import inox.ast.TreeDeconstructor
 import inox.ast.TreeExtractor
 
 trait Analysers { theory: AssistedTheory =>
-  implicit class IHUtils(hyp: StructuralInductionHypotheses) {
+  private implicit class IHUtils(hyp: StructuralInductionHypotheses) {
     lazy val variablesSet = hyp.variables.toSet
 
     private def isInnerOrSelf(inner: Expr): Boolean = inner == hyp.expression || isInner(inner)
@@ -24,14 +24,14 @@ trait Analysers { theory: AssistedTheory =>
     }
   }
 
-  sealed abstract class Path
-  case class NotE(next: Path) extends Path
-  case class AndE(clauseIndex: Int, next: Path) extends Path
-  case class ForallE(vals: Seq[ValDef], next: Path) extends Path
-  case class ImplE(assumption: Expr, next: Path) extends Path
-  case object EndOfPath extends Path
+  private sealed abstract class Path
+  private case class NotE(next: Path) extends Path
+  private case class AndE(clauseIndex: Int, next: Path) extends Path
+  private case class ForallE(vals: Seq[ValDef], next: Path) extends Path
+  private case class ImplE(assumption: Expr, next: Path) extends Path
+  private case object EndOfPath extends Path
 
-  case class Conclusion(expr: Expr, freeVars: Set[Variable], path: Path) {
+  private case class Conclusion(expr: Expr, freeVars: Set[Variable], path: Path) {
     def notE = Conclusion(expr, freeVars, NotE(path))
     def andE(index: Int) = Conclusion(expr, freeVars, AndE(index, path))
     def forallE(vals: Seq[ValDef]) = Conclusion(expr, freeVars ++ vals.map(_.toVariable), ForallE(vals, path))
@@ -76,7 +76,7 @@ trait Analysers { theory: AssistedTheory =>
     thms.toMap
   }
 
-  def unify(expr: Expr, pattern: Expr, instantiableVars: Set[Variable]): Option[Map[Variable, Expr]] = (expr, pattern) match {
+  private def unify(expr: Expr, pattern: Expr, instantiableVars: Set[Variable]): Option[Map[Variable, Expr]] = (expr, pattern) match {
     case (ev: Variable, pv: Variable) if ev == pv => Some(Map.empty)
 
     case (expr, pv: Variable) =>
@@ -116,11 +116,11 @@ trait Analysers { theory: AssistedTheory =>
     case _          => None
   }
 
-  protected object TheoremWithExpression {
+  private object TheoremWithExpression {
     def unapply(thm: Theorem): Option[(Theorem, Expr)] = Some((thm, thm.expression))
   }
 
-  def followPath(thm: Theorem, path: Path, subst: Map[Variable, Expr]): Option[Theorem] = path match {
+  private def followPath(thm: Theorem, path: Path, subst: Map[Variable, Expr]): Option[Theorem] = path match {
     case NotE(next)              => followPath(notE(thm), next, subst)
     case AndE(i, next)           => followPath(andE(thm)(i), next, subst)
     case ForallE(vals, next)     => followPath(forallE(thm)(subst(vals.head.toVariable), (vals.tail map (v => subst(v.toVariable)): _*)), next, subst)
@@ -128,7 +128,7 @@ trait Analysers { theory: AssistedTheory =>
     case EndOfPath               => Some(thm)
   }
 
-  def instantiateConclusion(expr: Expr, thm: Theorem): Seq[(Expr, Expr, Theorem)] = {
+  private def instantiateConclusion(expr: Expr, thm: Theorem): Seq[(Expr, Expr, Theorem)] = {
     val concls = conclusionsOf(thm.expression) flatMap (_ match {
       case concl @ Conclusion(Equals(a, b), vars, path) => Seq(
         (a, (x: Equals) => x.lhs, (x: Equals) => x.rhs, vars, path),
@@ -149,16 +149,30 @@ trait Analysers { theory: AssistedTheory =>
     }(expr).groupBy(x => (x._1, x._2)).map(_._2.head).toSeq
   }
 
-  def findTheoremApplications(expr: Expr, thms: Map[String, Theorem]): Seq[Suggestion] = {
+  private def findTheoremApplications(expr: Expr, thms: Map[String, Theorem]): Seq[Suggestion] = {
     thms.toSeq flatMap {
       case (name, thm) =>
         instantiateConclusion(expr, thm) map { case (subj, res, thm) => ApplyTheorem(name, thm, subj, res) }
     }
   }
 
-  def analyse(e: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses]): (Seq[Suggestion], Map[String, Theorem]) = {
+  protected[ipw] def analyse(e: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses]): (Seq[Suggestion], Map[String, Theorem]) = {
     val findInduct = findInductiveHypothesisApplication(e, ihs)
     val newThms = thms ++ findInduct
     (collectInvocations(e) ++ findTheoremApplications(e, newThms), newThms)
+  }
+
+  protected[ipw] def analyseForall(v: ValDef, body: Expr): Seq[Suggestion] = {
+    val structInd = v.tpe match {
+      case adt: ADTType => adt.lookupADT match {
+        case Some(adtDef) =>
+          if (adtDef.definition.isInductive) Seq(StructuralInduction(v))
+          else Seq()
+        case _ => Seq()
+      }
+      case _ => Seq()
+    }
+
+    structInd :+ FixVariable(v)
   }
 }

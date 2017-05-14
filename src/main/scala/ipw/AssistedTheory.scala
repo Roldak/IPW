@@ -43,7 +43,7 @@ trait AssistedTheory
   private case class Following(ctx: ProofContext) extends GUIContext
 
   private def onGUITab[T](ctx: GUIContext)(f: ProofContext => T): T = ctx match {
-    case NewWindow(tabTitle) => 
+    case NewWindow(tabTitle) =>
       val willTerminate = Promise[Unit] // them lies tho
       val res = onGUITab(NewTab(tabTitle, Await.result(openAssistantWindow(willTerminate.future), Duration.Inf)))(f)
       willTerminate.success(())
@@ -53,7 +53,7 @@ trait AssistedTheory
       val (choosingEnd, suggestingEnd) = SynchronizedChannel[ProofState, UpdateStep]()
       val tab = window.openNewTab(title, choosingEnd)
       f(suggestingEnd, Await.result(tab, Duration.Inf))
-      
+
     case Following(ctx) => f(ctx)
   }
 
@@ -118,21 +118,21 @@ trait AssistedTheory
   }
 
   def IPWprove(expr: Expr, source: JFile, thms: Map[String, Theorem],
-               ihs: Seq[StructuralInductionHypotheses] = Nil, guiCtx: GUIContext = NewWindow("Proof")): Attempt[Theorem] = onGUITab(guiCtx) {
-    case proofCtx @ (suggestingEnd, tab) => expr match {
-      case Equals(lhs, rhs) => IPWproveEq(lhs, rhs, source, thms, ihs, Following(proofCtx))
-      case Forall(v :: vals, body) =>
-        val structInd = v.tpe match {
-          case adt: ADTType => adt.lookupADT match {
-            case Some(adtDef) =>
-              if (adtDef.definition.isInductive) Seq(StructuralInduction(v))
-              else Seq()
-            case _ => Seq()
-          }
-          case _ => Seq()
-        }
+               ihs: Seq[StructuralInductionHypotheses] = Nil, guiCtx: GUIContext = NewWindow("Proof")): Attempt[Theorem] = expr match {
+    case Equals(lhs, rhs) =>
+      IPWproveEq(lhs, rhs, source, thms, ihs, guiCtx)
 
-        val suggs = structInd :+ FixVariable(v)
+    case Not(Not(e)) =>
+      IPWprove(e, source, thms, ihs, guiCtx)
+
+    case And(exprs) => onGUITab(guiCtx) {
+      case (_, tab) =>
+        andI(exprs.zipWithIndex map { case (e, i) => IPWprove(e, source, thms, ihs, NewTab(s"${tab.title}[$i]", tab.window)).get})
+    }
+
+    case Forall(v :: vals, body) => onGUITab(guiCtx) {
+      case proofCtx @ (suggestingEnd, tab) =>
+        val suggs = analyseForall(v, body)
         suggestingEnd.write((expr, E(42), suggs, thms))
 
         suggestingEnd.read match {
@@ -141,16 +141,27 @@ trait AssistedTheory
 
           case StructuralInduction(_) =>
             structuralInduction(expr, v) {
-              case (tihs, goal) => 
+              case (tihs, goal) =>
                 val Some((caseId, _)) = C.unapplySeq(tihs.expression)
                 IPWprove(goal.expression, source, thms, ihs :+ tihs, NewTab(s"${tab.title} case '${caseId}'", tab.window))
             }
 
           case Abort => Attempt.fail("Operation aborted")
-          
+
           case other => throw new IllegalStateException(s"Suggestion ${other} is illegal in this context")
         }
     }
-
+    
+    case Implies(hyp, body) => onGUITab(guiCtx) {
+      case proofCtx @ (suggestingEnd, tab) =>
+        suggestingEnd.write((expr, E(34), Seq(AssumeHypothesis(hyp)), thms))
+        
+        suggestingEnd.read match {
+          case AssumeHypothesis(_) =>
+            implI(hyp)(assumption => IPWprove(body, source, thms + ("assumption" -> assumption), ihs, Following(proofCtx)))
+            
+          case other => throw new IllegalStateException(s"Suggestion ${other} is illegal in this context")
+        }
+    }
   }
 }

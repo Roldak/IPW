@@ -46,8 +46,12 @@ trait Suggestions { theory: AssistedTheory =>
   case class StructuralInduction(v: ValDef) extends Suggestion(s"Structural induction on '${v.id}'") {
     override def apply(e: Expr) = throw new IllegalStateException("Should not even try to call this") 
   }
+  
+  case class AssumeHypothesis(hyp: Expr) extends Suggestion(s"Assume '${prettyPrint(hyp, PrinterOptions())}'") {
+    override def apply(e: Expr) = throw new IllegalStateException("Should not even try to call this")
+  }
 
-  case class ExpandInvocation(val inv: FunctionInvocation) extends Suggestion(s"Expand invocation of '${inv.id}'") {
+  case class ExpandInvocation(inv: FunctionInvocation) extends Suggestion(s"Expand invocation of '${inv.id}'") {
     val evaluator = PartialEvaluator.default(program, Some(inv))
     
     override def apply(e: Expr): Attempt[(Expr, Theorem)] = {
@@ -59,7 +63,7 @@ trait Suggestions { theory: AssistedTheory =>
     }
   }
   
-  case class ApplyTheorem(val name: String, val thm: Theorem, val subject: Expr, val res: Expr) extends Suggestion(s"Apply theorem $name") {
+  case class ApplyTheorem(name: String, thm: Theorem, subject: Expr, res: Expr) extends Suggestion(s"Apply theorem $name") {
     override def apply(e: Expr): Attempt[(Expr, Theorem)] = {
       Success((res, thm))
     }

@@ -72,6 +72,11 @@ object Main {
     def isUnit(f: Expr, z: Expr): Expr = forall("x" :: A)(x => f(x, z) === x && f(z, x) === x)
 
     def isMonoid(f: Expr, z: Expr): Expr = and(isAssociative(f), isUnit(f, z))
+    
+    println(IPWprove(
+          forall("f" :: ((A, A) =>: A), "z" :: A) ((f, z) => isMonoid(f, z) ==> forall("l" :: ListA, "x" :: A)((l, x) => foldl(f, x, l) === f(x, foldl(f, z, l)))),
+          proofsFile,
+          Map.empty))
 
     val theorem = forallI("f" :: ((A, A) =>: A), "z" :: A) { (f, z) =>
       implI(isMonoid(f, z)) { isMonoid =>
