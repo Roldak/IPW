@@ -54,7 +54,7 @@ trait Analysers { theory: AssistedTheory =>
       case Implies(assumption, rhs) =>
         conclusionsOf(rhs) map (_.implE(assumption))
 
-      case _ => Seq()
+      case _ => Nil
     }
 
     paths :+ Conclusion(thm, Set.empty, EndOfPath)
@@ -141,7 +141,7 @@ trait Analysers { theory: AssistedTheory =>
       case concl @ Conclusion(Equals(a, b), vars, path) => Seq(
         (a, (x: Equals) => x.lhs, (x: Equals) => x.rhs, vars, path),
         (b, (x: Equals) => x.rhs, (x: Equals) => x.lhs, vars, path))
-      case _ => Seq()
+      case _ => Nil
     })
 
     collectPreorderWithPath { (exp, exPath) =>
@@ -151,7 +151,7 @@ trait Analysers { theory: AssistedTheory =>
             case Some(subst) => followPath(thm, path, subst).map {
               case TheoremWithExpression(thm, eq @ Equals(_, _)) => (from(eq), replaceTreeWithPath(expr, exPath, to(eq)), thm)
             }.toSeq
-            case _ => Seq()
+            case _ => Nil
           }
       }
     }(expr).groupBy(x => (x._1, x._2)).map(_._2.head).toSeq

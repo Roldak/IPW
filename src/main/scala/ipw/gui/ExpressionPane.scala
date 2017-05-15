@@ -45,7 +45,7 @@ protected[gui] trait ExpressionPanes { window: AssistantWindow =>
 
       def clear(): Unit = {
         styleClass.clear()
-        children = Seq()
+        children = Nil
       }
 
       def clearCache(): Unit = previewCache.clear()

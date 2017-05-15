@@ -129,11 +129,11 @@ trait Rendering { window: AssistantWindow =>
 
   protected def nary(exprs: Seq[Seq[Code.Node]], sep: String = ", ", init: String = "", closing: String = "",
                      hideIfEmptyExprs: Boolean = false)(implicit ctx: FlowContext): Seq[Code.Node] = {
-    val initNode = if (init.isEmpty()) Seq() else Seq(Code.Operator(init))
-    val exprNodes = if (exprs.isEmpty) Seq() else exprs.init.flatMap(_ :+ Code.Operator(sep)) ++ exprs.last
-    val closingNode = if (closing.isEmpty()) Seq() else Seq(Code.Operator(closing))
+    val initNode = if (init.isEmpty()) Nil else Seq(Code.Operator(init))
+    val exprNodes = if (exprs.isEmpty) Nil else exprs.init.flatMap(_ :+ Code.Operator(sep)) ++ exprs.last
+    val closingNode = if (closing.isEmpty()) Nil else Seq(Code.Operator(closing))
 
-    if (exprNodes.isEmpty && hideIfEmptyExprs) Seq()
+    if (exprNodes.isEmpty && hideIfEmptyExprs) Nil
     else initNode ++ exprNodes ++ closingNode
   }
 

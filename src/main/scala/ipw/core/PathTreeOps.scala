@@ -15,11 +15,11 @@ trait PathTreeOps { theory: AssistedTheory =>
   }
   
   def collectWithPath[T](matcher: (Source, TreePath) => Set[T])(e: Source): Set[T] = {
-    foldWithPath[Set[T]]({ (e, path, subs) => matcher(e, path) ++ subs.flatten } )(e, Seq())
+    foldWithPath[Set[T]]({ (e, path, subs) => matcher(e, path) ++ subs.flatten } )(e, Nil)
   }
   
   def collectPreorderWithPath[T](matcher: (Source, TreePath) => Seq[T])(e: Source): Seq[T] = {
-    foldWithPath[Seq[T]]({ (e, path, subs) => matcher(e, path) ++ subs.flatten } )(e, Seq())
+    foldWithPath[Seq[T]]({ (e, path, subs) => matcher(e, path) ++ subs.flatten } )(e, Nil)
   }
   
   def replaceTreeWithPath(expr: Source, path: TreePath, replaceWith: Source): Source = path match {
