@@ -11,7 +11,7 @@ import ipw.AssistedTheory
 
 trait Suggestions { theory: AssistedTheory =>
   import trees._
-  
+  /*
   sealed abstract class Suggestion(val descr: String) {
     def apply(e: Expr): Attempt[(Expr, Theorem)]
   }
@@ -68,4 +68,13 @@ trait Suggestions { theory: AssistedTheory =>
       Success((res, thm))
     }
   }
+  */
+  sealed abstract class Suggestion
+  case class RewriteSuggestion(subject: Expr, result: Expr, proof: Theorem) extends Suggestion
+  case object FixVariable extends Suggestion
+  case object StructuralInduction extends Suggestion
+  case object AssumeHypothesis extends Suggestion
+  case object Abort extends Suggestion
+  
+  type NamedSuggestion = (String, Suggestion)
 }

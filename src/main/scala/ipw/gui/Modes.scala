@@ -35,7 +35,7 @@ trait Modes { window: AssistantWindow =>
     }
   }
 
-  protected[gui] case class SelectingInExpression(renderer: ASTRenderer, selectables: Seq[(Expr, Option[Expr], () => Unit)]) extends InputMode {
+  protected[gui] case class SelectingInExpression(renderer: ASTRenderer, selectables: Seq[(Expr, Expr, () => Unit)]) extends InputMode {
     override def onNewRenderer(r: ASTRenderer): Unit = {
       if (r == renderer) {
         r.codeNodes foreach { n =>
@@ -59,9 +59,9 @@ trait Modes { window: AssistantWindow =>
         }
       }
       if (sel.size == 1) {
-        sel.head._2 foreach (renderer.pane.PreviewBox.setExpr(_))
+        renderer.pane.PreviewBox.setExpr(sel.head._2)
       } else {
-        renderer.pane.PreviewBox.setExprs(sel flatMap (s => s._2 map (x => (x, s._3))))
+        renderer.pane.PreviewBox.setExprs(sel map (s => (s._2, s._3)))
       }
     }
 
@@ -76,7 +76,6 @@ trait Modes { window: AssistantWindow =>
     }
 
     override def onMouseClickedNode(node: Code.Node): Unit = {
-      //selectables find (_._1 == node.expression) foreach (_._3())
       val sel = selectables filter (_._1 == node.expression)
       if (sel.size == 1) {
         sel.head._3()
@@ -85,15 +84,15 @@ trait Modes { window: AssistantWindow =>
       }
     }
   }
-  
-  protected[gui] case class SelectingInPreview(initial: ASTRenderer, selectables: Seq[(Option[Expr], () => Unit)]) extends InputMode {
+
+  protected[gui] case class SelectingInPreview(initial: ASTRenderer, selectables: Seq[(Expr, () => Unit)]) extends InputMode {
     override def onNewRenderer(r: ASTRenderer): Unit = {
       r.codeNodes foreach { n =>
         n.fill = Color.DarkGray
       }
-      if (r == initial) { 
+      if (r == initial) {
         // to have it done only once...
-        r.pane.PreviewBox.setExprs(selectables flatMap (s => s._1 map (x => (x, s._2))))
+        r.pane.PreviewBox.setExprs(selectables map (s => (s._1, s._2)))
       }
     }
   }

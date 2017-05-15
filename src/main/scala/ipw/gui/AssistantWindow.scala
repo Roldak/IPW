@@ -69,10 +69,9 @@ trait AssistantWindow
                   if (newValue != null) { // is null when suggestionBuffer.clear() triggers onChange
                     if (newValue._2.size > 1) {
                       val validSuggs = newValue._2 flatMap {
-                        case s @ ExprTransformingSuggestion(expr) => Seq((expr, PreviewableSuggestion.unapply(s), onSelectSuggestion(s)))
-                        case _                                    => Seq()
+                        case s @ RewriteSuggestion(subj, res, _) => Seq((subj, res, onSelectSuggestion(s)))
+                        case _                                   => Seq()
                       }
-                      println(validSuggs)
                       expressionPane.installMode(SelectingInExpression(expressionPane.lastRenderer, validSuggs))
                     } else {
                       onSelectSuggestion(newValue._2.head)()
@@ -105,13 +104,16 @@ trait AssistantWindow
             elemStatus.get(expr) foreach (elem.right = _)
 
             suggestionBuffer.clear()
-            suggestionBuffer ++= suggs.groupBy(_.descr).toSeq
+            suggestionBuffer ++= suggs.groupBy(_._1).map { case (k, v) => (k, v map (_._2)) }.toSeq
 
             theoremPane.clear
             thms foreach {
               case (name, thm) =>
                 val thmElem = theoremPane.addElement(thm.expression)
-                thmElem.right = new Text(s" <$name>")
+                thmElem.top = new Text {
+                  text = s"$name :"
+                  margin = Insets(0, 0, 10, 0)
+                }
             }
           }
         }
@@ -195,11 +197,11 @@ trait AssistantWindow
     Platform.runLater {
       val dialog = new Alert(AlertType.Confirmation) {
         title = "Split Theorem"
-        headerText = exprs.zipWithIndex map { case (e, i) => s"${i + 1}. ${prettyPrint(e, PrinterOptions())}" } mkString("\n")
+        headerText = exprs.zipWithIndex map { case (e, i) => s"${i + 1}. ${prettyPrint(e, PrinterOptions())}" } mkString ("\n")
         contentText = s"Do you want to split the theorem in ${exprs.size}?"
       }
 
-      choice.success(dialog.showAndWait() map (_ == ButtonType.OK) getOrElse(false))
+      choice.success(dialog.showAndWait() map (_ == ButtonType.OK) getOrElse (false))
     }
     Await.result(choice.future, Duration.Inf)
   }

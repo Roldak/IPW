@@ -24,7 +24,7 @@ trait AssistedTheory
     with Suggestions
     with AssistantWindow { self =>
 
-  protected[ipw]type ProofState = (Expr, Seq[Suggestion], Map[String, Theorem])
+  protected[ipw]type ProofState = (Expr, Seq[NamedSuggestion], Map[String, Theorem])
   protected[ipw]type UpdateStep = Suggestion
   protected[ipw]type ChoosingEnd = SynchronizedChannel.End[ProofState, UpdateStep]
   protected[ipw]type SuggestingEnd = SynchronizedChannel.End[UpdateStep, ProofState]
@@ -78,15 +78,13 @@ trait AssistedTheory
 
         val choice = suggestingEnd.read
 
-        if (choice != Abort) {
-          choice(step) match {
-            case Success((next, stepProof)) =>
-              deepen(next, prove(expr === next, accumulatedProof, stepProof), newThms)
-
-            case Failure(reason) =>
-              println("Error while applying suggestion: " + reason)
-              deepen(step, accumulatedProof, thms) // try again
-          }
+        choice match {
+          case RewriteSuggestion(_, next, proof) =>
+            deepen(next, prove(expr === next, accumulatedProof, proof), newThms)
+          case Abort =>
+          case other => 
+            println(s"Suggestion $other cannot be used in this context")
+            deepen(step, accumulatedProof, thms) // try again
         }
       }
 
@@ -133,10 +131,10 @@ trait AssistedTheory
         suggestingEnd.write((expr, suggs, thms))
 
         suggestingEnd.read match {
-          case FixVariable(_) =>
+          case FixVariable =>
             forallI(v)(_ => IPWprove(if (vals.isEmpty) body else Forall(vals, body), source, thms, ihs, Following(proofCtx)))
 
-          case StructuralInduction(_) =>
+          case StructuralInduction =>
             structuralInduction(expr, v) {
               case (tihs, goal) =>
                 val Some((caseId, _)) = C.unapplySeq(tihs.expression)
@@ -151,10 +149,10 @@ trait AssistedTheory
 
     case Implies(hyp, body) => onGUITab(guiCtx) {
       case proofCtx @ (suggestingEnd, tab) =>
-        suggestingEnd.write((expr, Seq(AssumeHypothesis(hyp)), thms))
+        suggestingEnd.write((expr, Seq((s"Assume '${prettyPrint(hyp, PrinterOptions())}'", AssumeHypothesis)), thms))
 
         suggestingEnd.read match {
-          case AssumeHypothesis(_) =>
+          case AssumeHypothesis =>
             implI(hyp) { assumption =>
               val hyps = assumption.expression match {
                 case And(exprs) if promptTheoremSplit(exprs) => andE(assumption).get

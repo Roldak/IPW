@@ -8,6 +8,8 @@ import welder._
 import ipw.AssistedTheory
 import inox.ast.TreeDeconstructor
 import inox.ast.TreeExtractor
+import ipw.eval.PartialEvaluator
+import inox.evaluators.EvaluationResults._
 
 trait Analysers { theory: AssistedTheory =>
   private implicit class IHUtils(hyp: StructuralInductionHypotheses) {
@@ -58,7 +60,13 @@ trait Analysers { theory: AssistedTheory =>
     paths :+ Conclusion(thm, Set.empty, EndOfPath)
   }
 
-  private def collectInvocations(e: Expr): Seq[Suggestion] = functionCallsOf(e).map(new ExpandInvocation(_)).toSeq
+  private def collectInvocations(e: Expr): Seq[NamedSuggestion] = functionCallsOf(e).flatMap { inv =>
+    PartialEvaluator.default(program, Some(inv)).eval(e) match {
+      case Successful(ev)      => Seq((s"Expand invocation of '${inv.id}'", RewriteSuggestion(inv, ev, prove(e === ev))))
+      case RuntimeError(msg)   => Nil
+      case EvaluatorError(msg) => Nil
+    }
+  }.toSeq
 
   private def findInductiveHypothesisApplication(e: Expr, ihs: Seq[StructuralInductionHypotheses]): Map[String, Theorem] = {
     val ihset = ihs.toSet
@@ -149,30 +157,30 @@ trait Analysers { theory: AssistedTheory =>
     }(expr).groupBy(x => (x._1, x._2)).map(_._2.head).toSeq
   }
 
-  private def findTheoremApplications(expr: Expr, thms: Map[String, Theorem]): Seq[Suggestion] = {
+  private def findTheoremApplications(expr: Expr, thms: Map[String, Theorem]): Seq[NamedSuggestion] = {
     thms.toSeq flatMap {
       case (name, thm) =>
-        instantiateConclusion(expr, thm) map { case (subj, res, thm) => ApplyTheorem(name, thm, subj, res) }
+        instantiateConclusion(expr, thm) map { case (subj, res, proof) => (s"Apply theorem $name", RewriteSuggestion(subj, res, proof)) }
     }
   }
 
-  protected[ipw] def analyse(e: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses]): (Seq[Suggestion], Map[String, Theorem]) = {
+  protected[ipw] def analyse(e: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses]): (Seq[NamedSuggestion], Map[String, Theorem]) = {
     val findInduct = findInductiveHypothesisApplication(e, ihs)
     val newThms = thms ++ findInduct
     (collectInvocations(e) ++ findTheoremApplications(e, newThms), newThms)
   }
 
-  protected[ipw] def analyseForall(v: ValDef, body: Expr): Seq[Suggestion] = {
+  protected[ipw] def analyseForall(v: ValDef, body: Expr): Seq[NamedSuggestion] = {
     val structInd = v.tpe match {
       case adt: ADTType => adt.lookupADT match {
         case Some(adtDef) =>
-          if (adtDef.definition.isInductive) Seq(StructuralInduction(v))
-          else Seq()
-        case _ => Seq()
+          if (adtDef.definition.isInductive) Seq((s"Structural induction on '${v.id}'", StructuralInduction))
+          else Nil
+        case _ => Nil
       }
-      case _ => Seq()
+      case _ => Nil
     }
 
-    structInd :+ FixVariable(v)
+    structInd :+ (s"Fix variable '${v.id}'", FixVariable)
   }
 }
