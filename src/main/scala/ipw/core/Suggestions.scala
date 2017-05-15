@@ -12,8 +12,21 @@ import ipw.AssistedTheory
 trait Suggestions { theory: AssistedTheory =>
   import trees._
   
+  protected[ipw] class RewriteResult private (computeRes: () => (Expr, Theorem)) {
+    private lazy val result = computeRes()
+    
+    def apply(): (Expr, Theorem) = result
+  }
+  
+  protected[ipw] object RewriteResult {
+    def apply(expr: Expr, proof: Theorem) = new RewriteResult(() => (expr, proof))
+    def apply(res: () => (Expr, Theorem)) = new RewriteResult(res)
+    
+    def unapply(res: RewriteResult): Option[(Expr, Theorem)] = Some(res())
+  }
+  
   protected[ipw] sealed abstract class Suggestion
-  protected[ipw] case class RewriteSuggestion(subject: Expr, result: Expr, proof: Theorem) extends Suggestion
+  protected[ipw] case class RewriteSuggestion(subject: Expr, result: RewriteResult) extends Suggestion
   protected[ipw] case object FixVariable extends Suggestion
   protected[ipw] case object StructuralInduction extends Suggestion
   protected[ipw] case object AssumeHypothesis extends Suggestion

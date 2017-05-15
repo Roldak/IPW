@@ -79,7 +79,7 @@ trait AssistedTheory
         val choice = suggestingEnd.read
 
         choice match {
-          case RewriteSuggestion(_, next, proof) =>
+          case RewriteSuggestion(_, RewriteResult(next, proof)) =>
             deepen(next, prove(expr === next, accumulatedProof, proof), newThms)
           case Abort =>
           case other => 

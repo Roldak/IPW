@@ -60,12 +60,12 @@ trait Analysers { theory: AssistedTheory =>
     paths :+ Conclusion(thm, Set.empty, EndOfPath)
   }
 
-  private def collectInvocations(e: Expr): Seq[NamedSuggestion] = functionCallsOf(e).flatMap { inv =>
-    PartialEvaluator.default(program, Some(inv)).eval(e) match {
-      case Successful(ev)      => Seq((s"Expand invocation of '${inv.id}'", RewriteSuggestion(inv, ev, prove(e === ev))))
-      case RuntimeError(msg)   => Nil
-      case EvaluatorError(msg) => Nil
+  private def collectInvocations(e: Expr): Seq[NamedSuggestion] = functionCallsOf(e).map { inv =>
+    def result(): (Expr, Theorem) = PartialEvaluator.default(program, Some(inv)).eval(e) match {
+      case Successful(ev) => (ev, prove(e === ev))
+      case _              => (e, truth)
     }
+    (s"Expand invocation of '${inv.id}'", RewriteSuggestion(inv, RewriteResult(result)))
   }.toSeq
 
   private def findInductiveHypothesisApplication(e: Expr, ihs: Seq[StructuralInductionHypotheses]): Map[String, Theorem] = {
@@ -160,7 +160,7 @@ trait Analysers { theory: AssistedTheory =>
   private def findTheoremApplications(expr: Expr, thms: Map[String, Theorem]): Seq[NamedSuggestion] = {
     thms.toSeq flatMap {
       case (name, thm) =>
-        instantiateConclusion(expr, thm) map { case (subj, res, proof) => (s"Apply theorem $name", RewriteSuggestion(subj, res, proof)) }
+        instantiateConclusion(expr, thm) map { case (subj, res, proof) => (s"Apply theorem $name", RewriteSuggestion(subj, RewriteResult(res, proof))) }
     }
   }
 
