@@ -72,6 +72,7 @@ trait AssistantWindow
                         case s @ ExprTransformingSuggestion(expr) => Seq((expr, PreviewableSuggestion.unapply(s), onSelectSuggestion(s)))
                         case _                                    => Seq()
                       }
+                      println(validSuggs)
                       expressionPane.installMode(SelectingInExpression(expressionPane.lastRenderer, validSuggs))
                     } else {
                       onSelectSuggestion(newValue._2.head)()

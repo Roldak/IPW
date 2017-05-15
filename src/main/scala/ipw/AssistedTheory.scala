@@ -57,7 +57,7 @@ trait AssistedTheory
     case Following(ctx) => f(ctx)
   }
 
-  def IPWproveEq(expr: Expr, source: JFile, thms: Map[String, Theorem],
+  private def IPWproveInner(expr: Expr, source: JFile, thms: Map[String, Theorem],
                  ihs: Seq[StructuralInductionHypotheses] = Nil, guiCtx: GUIContext = NewWindow("Proof")): Attempt[Theorem] = onGUITab(guiCtx) {
     case (suggestingEnd, tab) =>
 
@@ -97,11 +97,11 @@ trait AssistedTheory
             updateStatus(step, Proving)
             prove(step) match {
               case Success(thm) =>
-                updateStatus(expr, ProofSucceeded)
+                updateStatus(step, ProofSucceeded)
                 prove(expr, accumulatedProof, thm)
 
               case _ =>
-                updateStatus(expr, ProofFailed)
+                updateStatus(step, ProofFailed)
                 proveForever()
             }
 
@@ -119,9 +119,6 @@ trait AssistedTheory
 
   def IPWprove(expr: Expr, source: JFile, thms: Map[String, Theorem],
                ihs: Seq[StructuralInductionHypotheses] = Nil, guiCtx: GUIContext = NewWindow("Proof")): Attempt[Theorem] = expr match {
-    case Equals(lhs, rhs) =>
-      IPWproveEq(lhs === rhs, source, thms, ihs, guiCtx)
-
     case Not(Not(e)) =>
       IPWprove(e, source, thms, ihs, guiCtx)
 
@@ -170,5 +167,8 @@ trait AssistedTheory
           case other => throw new IllegalStateException(s"Suggestion ${other} is illegal in this context")
         }
     }
+    
+    case _ => 
+      IPWproveInner(expr, source, thms, ihs, guiCtx)
   }
 }
