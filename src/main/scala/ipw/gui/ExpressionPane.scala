@@ -72,6 +72,15 @@ protected[gui] trait ExpressionPanes { window: AssistantWindow =>
       elem
     }
 
+    def removeLastAndGetNewLast: Element = {
+      val elemIndex = elements.size - 1
+      val elemRenderer = elements.last.renderer
+      elements.remove(elemIndex)
+      box.children.remove(elemIndex)
+      mode.onRemoveRenderer(elemRenderer)
+      elements.last
+    }
+    
     def elementsForExpr(expr: Expr): Seq[Element] = elements filter (_.expr == expr)
 
     def clear: Unit = {

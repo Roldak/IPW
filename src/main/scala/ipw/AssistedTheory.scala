@@ -24,7 +24,7 @@ trait AssistedTheory
     with Suggestions
     with AssistantWindow { self =>
 
-  protected[ipw]type ProofState = (Expr, Seq[NamedSuggestion], Map[String, Theorem])
+  protected[ipw]type ProofState = (Expr, Seq[NamedSuggestion], Map[String, Theorem], Boolean)
   protected[ipw]type UpdateStep = Suggestion
   protected[ipw]type ChoosingEnd = SynchronizedChannel.End[ProofState, UpdateStep]
   protected[ipw]type SuggestingEnd = SynchronizedChannel.End[UpdateStep, ProofState]
@@ -41,6 +41,8 @@ trait AssistedTheory
   case class NewWindow(tabTitle: String) extends GUIContext
   private case class NewTab(title: String, win: Window) extends GUIContext
   private case class Following(ctx: ProofContext) extends GUIContext
+  
+  private val UndoSuggestion = ("Undo", Undo)
 
   private def onGUITab[T](ctx: GUIContext)(f: ProofContext => T): T = ctx match {
     case NewWindow(tabTitle) =>
@@ -58,7 +60,7 @@ trait AssistedTheory
   }
 
   private def IPWproveInner(expr: Expr, source: JFile, thms: Map[String, Theorem],
-                 ihs: Seq[StructuralInductionHypotheses] = Nil, guiCtx: GUIContext = NewWindow("Proof")): Attempt[Theorem] = onGUITab(guiCtx) {
+                            ihs: Seq[StructuralInductionHypotheses] = Nil, guiCtx: GUIContext = NewWindow("Proof")): Attempt[Theorem] = onGUITab(guiCtx) {
     case (suggestingEnd, tab) =>
 
       val proofAttempts = new LinkedBlockingDeque[Option[(Expr, Theorem)]]
@@ -68,23 +70,30 @@ trait AssistedTheory
       }
 
       @tailrec
-      def deepen(step: Expr, accumulatedProof: Theorem, thms: Map[String, Theorem]): Unit = {
+      def deepen(history: List[(Expr, Theorem, Map[String, Theorem])], step: Expr, accumulatedProof: Theorem, thms: Map[String, Theorem], undo: Boolean = false): Unit = {
         proofAttempts.putFirst(Some((step, accumulatedProof)))
         updateStatus(step, InQueue)
 
         val (suggestions, newThms) = analyse(step, thms, ihs)
+        val extraSuggestions = if (!history.isEmpty) Seq(UndoSuggestion) else Nil
 
-        suggestingEnd.write((step, suggestions, newThms))
+        suggestingEnd.write((step, suggestions ++ extraSuggestions, newThms, undo))
 
         val choice = suggestingEnd.read
 
         choice match {
           case RewriteSuggestion(_, RewriteResult(next, proof)) =>
-            deepen(next, prove(expr === next, accumulatedProof, proof), newThms)
+            deepen((step, accumulatedProof, thms) :: history, next, prove(expr === next, accumulatedProof, proof), newThms)
+          case Undo => history match {
+            case h :: hs => deepen(hs, h._1, h._2, h._3, true)
+            case _ =>
+              println("Cannot undo: history is empty")
+              deepen(history, step, accumulatedProof, thms)
+          }
           case Abort =>
-          case other => 
+          case other =>
             println(s"Suggestion $other cannot be used in this context")
-            deepen(step, accumulatedProof, thms) // try again
+            deepen(history, step, accumulatedProof, thms) // try again
         }
       }
 
@@ -108,7 +117,7 @@ trait AssistedTheory
       }
 
       async {
-        deepen(expr, truth, thms)
+        deepen(Nil, expr, truth, thms)
         proofAttempts.addFirst(None) // abort :'(
       }
 
@@ -128,7 +137,7 @@ trait AssistedTheory
     case Forall(v :: vals, body) => onGUITab(guiCtx) {
       case proofCtx @ (suggestingEnd, tab) =>
         val suggs = analyseForall(v, body)
-        suggestingEnd.write((expr, suggs, thms))
+        suggestingEnd.write((expr, suggs, thms, false))
 
         suggestingEnd.read match {
           case FixVariable =>
@@ -149,14 +158,14 @@ trait AssistedTheory
 
     case Implies(hyp, body) => onGUITab(guiCtx) {
       case proofCtx @ (suggestingEnd, tab) =>
-        suggestingEnd.write((expr, Seq((s"Assume '${prettyPrint(hyp, PrinterOptions())}'", AssumeHypothesis)), thms))
+        suggestingEnd.write((expr, Seq((s"Assume '${prettyPrint(hyp, PrinterOptions())}'", AssumeHypothesis)), thms, false))
 
         suggestingEnd.read match {
           case AssumeHypothesis =>
             implI(hyp) { assumption =>
               val hyps = assumption.expression match {
                 case And(exprs) if promptTheoremSplit(exprs) => andE(assumption).get
-                case _ => Seq(assumption)
+                case _                                       => Seq(assumption)
               }
               val newThms = hyps map (h => (promptTheoremName(h.expression, "assumption"), h))
               IPWprove(body, source, thms ++ newThms, ihs, Following(proofCtx))
@@ -165,8 +174,8 @@ trait AssistedTheory
           case other => throw new IllegalStateException(s"Suggestion ${other} is illegal in this context")
         }
     }
-    
-    case _ => 
+
+    case _ =>
       IPWproveInner(expr, source, thms, ihs, guiCtx)
   }
 }

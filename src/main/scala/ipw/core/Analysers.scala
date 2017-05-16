@@ -11,6 +11,17 @@ import inox.ast.TreeExtractor
 import ipw.eval.PartialEvaluator
 import inox.evaluators.EvaluationResults._
 
+private object Utils {
+  implicit class BoolToOption(val self: Boolean) extends AnyVal {
+    def toOption[A](value: => A): Option[A] = if (self) Some(value) else None
+  }
+
+  def asADTType(tpe: Type): Option[ADTType] = tpe match {
+    case t: ADTType => Some(t)
+    case _          => None
+  }
+}
+
 trait Analysers { theory: AssistedTheory =>
   private implicit class IHUtils(hyp: StructuralInductionHypotheses) {
     lazy val variablesSet = hyp.variables.toSet
@@ -75,9 +86,9 @@ trait Analysers { theory: AssistedTheory =>
         if (ihs.isInner(e)) {
           ihs.hypothesis(e) match {
             case Success(thm) => Set((s"IH on `$e`", thm))
-            case Failure(_)   => Set[(String, Theorem)]()
+            case Failure(_)   => Set.empty[(String, Theorem)]
           }
-        } else Set[(String, Theorem)]()
+        } else Set.empty[(String, Theorem)]
       }
     }(e)
 
@@ -171,15 +182,11 @@ trait Analysers { theory: AssistedTheory =>
   }
 
   protected[ipw] def analyseForall(v: ValDef, body: Expr): Seq[NamedSuggestion] = {
-    val structInd = v.tpe match {
-      case adt: ADTType => adt.lookupADT match {
-        case Some(adtDef) =>
-          if (adtDef.definition.isInductive) Seq((s"Structural induction on '${v.id}'", StructuralInduction))
-          else Nil
-        case _ => Nil
-      }
-      case _ => Nil
-    }
+    import Utils._
+
+    val structInd = asADTType(v.tpe)
+      .flatMap(_.lookupADT.flatMap(_.definition.isInductive.toOption(Seq((s"Structural induction on '${v.id}'", StructuralInduction))))) // sorry
+      .getOrElse(Nil)
 
     structInd :+ (s"Fix variable '${v.id}'", FixVariable)
   }

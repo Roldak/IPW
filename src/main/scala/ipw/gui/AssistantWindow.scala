@@ -70,7 +70,7 @@ trait AssistantWindow
                     if (newValue._2.size > 1) {
                       val validSuggs = newValue._2 flatMap {
                         case s @ RewriteSuggestion(subj, RewriteResult(res, _)) => Seq((subj, res, onSelectSuggestion(s)))
-                        case _                                   => Nil
+                        case _ => Nil
                       }
                       expressionPane.installMode(SelectingInExpression(expressionPane.lastRenderer, validSuggs))
                     } else {
@@ -97,10 +97,17 @@ trait AssistantWindow
 
         // forever read inputs from the driver (suggestions, etc.) and update view
         asyncForever {
-          val (expr, suggs, thms) = choosingEnd.read
+          val (expr, suggs, thms, undo) = choosingEnd.read
 
           Platform.runLater {
-            val elem = expressionPane.addElement(expr)
+            val elem = if (undo) {
+              val e = expressionPane.removeLastAndGetNewLast
+              if (e.expr ne expr) throw new IllegalStateException("Invalid state. Driver and UI are out of sync.") 
+              e
+            } else {
+              expressionPane.addElement(expr)
+            }
+
             elemStatus.get(expr) foreach (elem.right = _)
 
             suggestionBuffer.clear()
@@ -166,7 +173,10 @@ trait AssistantWindow
       // automatically close tab when notified that the theorem has been proved
       async {
         Await.ready(done, Duration.Inf)
-        Platform.runLater { stage.close() }
+        Platform.runLater {
+          stage.onCloseRequest.value.handle(null)
+          stage.close()
+        }
       }
 
       // "return" a callback to the driver which he can call to update on the status of some proof steps
