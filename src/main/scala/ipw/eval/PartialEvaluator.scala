@@ -527,7 +527,7 @@ trait PartialEvaluator
   }
 }
 
-object PartialEvaluator {
+protected[ipw] object PartialEvaluator {
   def apply(p: InoxProgram, opts: Options, toExp: Option[p.trees.FunctionInvocation]): PartialEvaluator { val program: p.type } = {
     new {
       val program: p.type = p

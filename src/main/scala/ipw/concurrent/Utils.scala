@@ -1,6 +1,6 @@
 package ipw.concurrent
 
-object Utils {
+protected[ipw] object Utils {
   def async(f: => Unit): Unit = (new Thread {
     override def run = f
   }).start()

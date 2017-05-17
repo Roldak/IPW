@@ -51,6 +51,23 @@ trait Analysers { theory: AssistedTheory =>
     def implE(assumption: Expr) = Conclusion(expr, freeVars, ImplE(assumption, path))
   }
 
+  /**
+   * Generates all the conclusions of an expression (normally coming from a theorem)
+   * Basically conclusions of a given theorem are all the theorems that you could possibly generate from the 
+   * initial theorem (expression) by applying elimination rules, such as forallE, implE, etc.
+   * 
+   * Example: 
+   * input:  Vx. Vy. f(x) => (g(y) && Vz. h(z))
+   * output: [
+   * 	Vx. Vy. f(x) => (g(y) && Vz. h(z)) 		(no rules applied)
+   *  Vy. f(x) => (g(y) && Vz. h(z)) 				(forallE(x))
+   *  f(x) => (g(y) && Vz. h(z)) 						(forallE(x), forallE(y))
+   *  g(y) && Vz. h(z) 											(forallE(x), forallE(y), implE(f(x)))
+   *  g(y) 																	(forallE(x), forallE(y), implE(f(x)), andE(0))
+   *  Vz. h(z) 															(forallE(x), forallE(y), implE(f(x)), andE(1))
+   *  h(z)																	(forallE(x), forallE(y), implE(f(x)), andE(1), forallE(z))
+   * ]
+   */
   private def conclusionsOf(thm: Expr): Seq[Conclusion] = {
     val paths = thm match {
       case Not(Not(e)) =>
@@ -71,6 +88,9 @@ trait Analysers { theory: AssistedTheory =>
     paths :+ Conclusion(thm, Set.empty, EndOfPath)
   }
 
+  /**
+   * Collect function calls in the expression and generates suggestion for expanding them (using partial evaluation)
+   */
   private def collectInvocations(e: Expr): Seq[NamedSuggestion] = functionCallsOf(e).map { inv =>
     def result(): (Expr, Theorem) = PartialEvaluator.default(program, Some(inv)).eval(e) match {
       case Successful(ev) => (ev, prove(e === ev))
@@ -79,6 +99,9 @@ trait Analysers { theory: AssistedTheory =>
     (s"Expand invocation of '${inv.id}'", RewriteSuggestion(inv, RewriteResult(result)))
   }.toSeq
 
+  /**
+   * Finds expressions which can be applied to the inductive hypothesis in order to generate a new theorem.
+   */
   private def findInductiveHypothesisApplication(e: Expr, ihs: Seq[StructuralInductionHypotheses]): Map[String, Theorem] = {
     val ihset = ihs.toSet
     val thms = collect[(String, Theorem)] { e: Expr =>
@@ -95,6 +118,9 @@ trait Analysers { theory: AssistedTheory =>
     thms.toMap
   }
 
+  /**
+   * Unifies the pattern with the expression, where instantiableVars denotes the set of variables appearing in the pattern that are instantiable.
+   */
   private def unify(expr: Expr, pattern: Expr, instantiableVars: Set[Variable]): Option[Map[Variable, Expr]] = (expr, pattern) match {
     case (ev: Variable, pv: Variable) if ev == pv => Some(Map.empty)
 
@@ -139,6 +165,10 @@ trait Analysers { theory: AssistedTheory =>
     def unapply(thm: Theorem): Option[(Theorem, Expr)] = Some((thm, thm.expression))
   }
 
+  /**
+   * Generates a new theorem from a given theorem by following elimination rules given by the path,
+   * with the help of a substitution to instantiate foralls.
+   */
   private def followPath(thm: Theorem, path: Path, subst: Map[Variable, Expr]): Option[Theorem] = path match {
     case NotE(next)              => followPath(notE(thm), next, subst)
     case AndE(i, next)           => followPath(andE(thm)(i), next, subst)
@@ -146,7 +176,21 @@ trait Analysers { theory: AssistedTheory =>
     case ImplE(assumption, next) => ???
     case EndOfPath               => Some(thm)
   }
+  
+  /**
+   * Free variables are generally all instantiated by unifying the pattern of the conclusion with the subject expression.
+   * However, sometimes this is not enough, as some quantified variables can not appear in the pattern:
+   *  - If doesn't appear at all in the formula (then instantiate it with any value)
+   *  - If it appears in a premise of an implication
+   */
+  private def instantiateFreeVariables(freeVars: Set[Variable], exp: Expr, pattern: Expr, path: Path): Option[Map[Variable, Expr]] = {
+    unify(exp, pattern, freeVars)
+  }
 
+  /**
+   * Given a root expression expr and a root theorem thm,
+   * tries to find subexpressions inside expr where some conclusion of thm could be applied. 
+   */
   private def instantiateConclusion(expr: Expr, thm: Theorem): Seq[(Expr, Expr, Theorem)] = {
     val concls = conclusionsOf(thm.expression) flatMap (_ match {
       case concl @ Conclusion(Equals(a, b), vars, path) => Seq(
@@ -158,7 +202,7 @@ trait Analysers { theory: AssistedTheory =>
     collectPreorderWithPath { (exp, exPath) =>
       concls flatMap {
         case (pattern, from, to, freeVars, path) =>
-          unify(exp, pattern, freeVars) match {
+          instantiateFreeVariables(freeVars, exp, pattern, path) match {
             case Some(subst) => followPath(thm, path, subst).map {
               case TheoremWithExpression(thm, eq @ Equals(_, _)) => (from(eq), replaceTreeWithPath(expr, exPath, to(eq)), thm)
             }.toSeq
@@ -168,19 +212,33 @@ trait Analysers { theory: AssistedTheory =>
     }(expr).groupBy(x => (x._1, x._2)).map(_._2.head).toSeq
   }
 
+  /**
+   * Given a root expression expr and a collection of theorems thms,
+   * finds all possible applications of any theorem in thms on any subexpression of expr
+   */
   private def findTheoremApplications(expr: Expr, thms: Map[String, Theorem]): Seq[NamedSuggestion] = {
     thms.toSeq flatMap {
       case (name, thm) =>
+        if (name == "lemma") {
+          println("loule")
+        }
         instantiateConclusion(expr, thm) map { case (subj, res, proof) => (s"Apply theorem $name", RewriteSuggestion(subj, RewriteResult(res, proof))) }
     }
   }
 
+  /**
+   * Generates all suggestions by analyzing the given root expression and the theorems/IHS that are available.
+   */
   protected[ipw] def analyse(e: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses]): (Seq[NamedSuggestion], Map[String, Theorem]) = {
     val findInduct = findInductiveHypothesisApplication(e, ihs)
     val newThms = thms ++ findInduct
     (collectInvocations(e) ++ findTheoremApplications(e, newThms), newThms)
   }
 
+  /**
+   * Generates suggestions to eliminate a forall. 
+   * (Either fix the variable, or if its type is inductive, suggest structural induction)
+   */
   protected[ipw] def analyseForall(v: ValDef, body: Expr): Seq[NamedSuggestion] = {
     import Utils._
 

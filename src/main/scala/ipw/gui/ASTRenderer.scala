@@ -195,7 +195,7 @@ trait Rendering { window: AssistantWindow =>
     nodes
   }
 
-  class ASTRenderer(val pane: ExpressionPane, expr: Expr, fontSize: Double) extends TextFlow {
+  protected[gui] class ASTRenderer(val pane: ExpressionPane, expr: Expr, fontSize: Double) extends TextFlow {
     val codeNodes = buildFlow(expr)(FlowContext(0, Nil, Set.empty, fontSize, this))
 
     children = codeNodes

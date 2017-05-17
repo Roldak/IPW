@@ -181,7 +181,7 @@ trait AssistantWindow
 
       // "return" a callback to the driver which he can call to update on the status of some proof steps
       windowPromise.success(new Window(stage, appendTab))
-
+      
       stage.showAndWait()
     }
 

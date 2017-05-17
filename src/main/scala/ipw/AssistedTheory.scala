@@ -24,11 +24,11 @@ trait AssistedTheory
     with Suggestions
     with AssistantWindow { self =>
 
-  protected[ipw]type ProofState = (Expr, Seq[NamedSuggestion], Map[String, Theorem], Boolean)
-  protected[ipw]type UpdateStep = Suggestion
-  protected[ipw]type ChoosingEnd = SynchronizedChannel.End[ProofState, UpdateStep]
-  protected[ipw]type SuggestingEnd = SynchronizedChannel.End[UpdateStep, ProofState]
-  protected[ipw]type StatusCallback = (Expr, Status) => Unit
+  protected[ipw] type ProofState = (Expr, Seq[NamedSuggestion], Map[String, Theorem], Boolean)
+  protected[ipw] type UpdateStep = Suggestion
+  protected[ipw] type ChoosingEnd = SynchronizedChannel.End[ProofState, UpdateStep]
+  protected[ipw] type SuggestingEnd = SynchronizedChannel.End[UpdateStep, ProofState]
+  protected[ipw] type StatusCallback = (Expr, Status) => Unit
   private type ProofContext = (SuggestingEnd, WindowTab)
 
   protected[ipw] sealed abstract class Status(val stage: Int, val message: String)
@@ -41,7 +41,7 @@ trait AssistedTheory
   case class NewWindow(tabTitle: String) extends GUIContext
   private case class NewTab(title: String, win: Window) extends GUIContext
   private case class Following(ctx: ProofContext) extends GUIContext
-  
+
   private val UndoSuggestion = ("Undo", Undo)
 
   private def onGUITab[T](ctx: GUIContext)(f: ProofContext => T): T = ctx match {

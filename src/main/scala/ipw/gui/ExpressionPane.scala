@@ -17,7 +17,7 @@ import scala.collection.mutable.{ Map => MutableMap }
 import scalafx.scene.layout.Pane
 
 protected[gui] trait ExpressionPanes { window: AssistantWindow =>
-  class ExpressionPane(val expressionFontSize: Double) extends ScrollPane { scrollPane =>
+  protected[gui] class ExpressionPane(val expressionFontSize: Double) extends ScrollPane { scrollPane =>
     case class Element(expr: Expr, callback: () => Unit, curs: Cursor = Cursor.Default) extends BorderPane {
       val renderer = new ASTRenderer(scrollPane, expr, expressionFontSize)
 

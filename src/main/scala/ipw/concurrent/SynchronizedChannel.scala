@@ -2,7 +2,7 @@ package ipw.concurrent
 
 import java.util.concurrent.{BlockingDeque, LinkedBlockingDeque}
 
-object SynchronizedChannel {
+protected[ipw] object SynchronizedChannel {
   class End[In, Out](private val inDeque: BlockingDeque[In], private val outDeque: BlockingDeque[Out]) {
     def read: In = inDeque.takeFirst()
     def write(v: Out): Unit = outDeque.putLast(v)

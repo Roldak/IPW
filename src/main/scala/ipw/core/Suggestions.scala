@@ -16,6 +16,8 @@ trait Suggestions { theory: AssistedTheory =>
     private lazy val result = computeRes()
     
     def apply(): (Expr, Theorem) = result
+    
+    override def toString(): String = s"RewriteResult(${result._1}, ${result._2})"
   }
   
   protected[ipw] object RewriteResult {
