@@ -176,11 +176,7 @@ trait Analysers { theory: AssistedTheory =>
   private def followPath(thm: Theorem, path: Path, subst: Substitution, instPrems: Seq[Theorem]): Option[Theorem] = path match {
     case NotE(next) => followPath(notE(thm), next, subst, instPrems)
     case AndE(i, next) => followPath(andE(thm)(i), next, subst, instPrems)
-    case ForallE(vals, next) =>
-      if (vals forall (subst isDefinedAt _.toVariable))
-        followPath(forallE(thm)(subst(vals.head.toVariable), (vals.tail map (v => subst(v.toVariable)): _*)), next, subst, instPrems)
-      else None
-
+    case ForallE(vals, next) => followPath(forallE(thm)(subst(vals.head.toVariable), (vals.tail map (v => subst(v.toVariable)): _*)), next, subst, instPrems)
     case ImplE(assumption, next) => followPath(implE(thm)(_.by(instPrems.head)), next, subst, instPrems.tail)
     case EndOfPath => Some(thm)
   }
@@ -219,8 +215,9 @@ trait Analysers { theory: AssistedTheory =>
       acc ++ (conclusionsOf(thm.expression) flatMap {
         case Conclusion(pattern, freeVars, premises, path) =>
           instantiatePath(expr, pattern, path, freeVars ++ instantiableVars, premises, avThms) flatMap {
-            case (subst, prems) =>
+            case (subst, prems) if freeVars forall (subst isDefinedAt _) => 
               followPath(thm, path, subst, prems).map { (subst, _) }.toSeq
+            case _ => Nil
           }
       })
     }
@@ -257,10 +254,11 @@ trait Analysers { theory: AssistedTheory =>
       concls flatMap {
         case (pattern, from, to, freeVars, premises, path) =>
           instantiatePath(exp, pattern, path, freeVars, premises, avThms) flatMap {
-            case (subst, prems) =>
+            case (subst, prems) if freeVars forall (subst isDefinedAt _) =>
               followPath(thm, path, subst, prems).map {
                 case TheoremWithExpression(thm, eq: Equals) => (from(eq), replaceTreeWithPath(expr, exPath, to(eq)), thm)
               }.toSeq
+            case _ => Nil
           }
       }
     }(expr).groupBy(x => (x._1, x._2)).map(_._2.head).toSeq
