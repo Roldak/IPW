@@ -173,12 +173,12 @@ trait Analysers { theory: AssistedTheory =>
    * Generates a new theorem from a given theorem by following elimination rules given by the path,
    * with the help of a substitution to instantiate foralls.
    */
-  private def followPath(thm: Theorem, path: Path, subst: Substitution, instPrems: Seq[Theorem]): Option[Theorem] = path match {
+  private def followPath(thm: Theorem, path: Path, subst: Substitution, instPrems: Seq[Theorem]): Theorem = path match {
     case NotE(next) => followPath(notE(thm), next, subst, instPrems)
     case AndE(i, next) => followPath(andE(thm)(i), next, subst, instPrems)
     case ForallE(vals, next) => followPath(forallE(thm)(subst(vals.head.toVariable), (vals.tail map (v => subst(v.toVariable)): _*)), next, subst, instPrems)
     case ImplE(assumption, next) => followPath(implE(thm)(_.by(instPrems.head)), next, subst, instPrems.tail)
-    case EndOfPath => Some(thm)
+    case EndOfPath => thm
   }
 
   private def proveDependentSequence(exprs: Seq[Expr], instantiable: Set[Variable], sub: Substitution,
@@ -215,8 +215,8 @@ trait Analysers { theory: AssistedTheory =>
       acc ++ (conclusionsOf(thm.expression) flatMap {
         case Conclusion(pattern, freeVars, premises, path) =>
           instantiatePath(expr, pattern, path, freeVars ++ instantiableVars, premises, avThms) flatMap {
-            case (subst, prems) if freeVars forall (subst isDefinedAt _) => 
-              followPath(thm, path, subst, prems).map { (subst, _) }.toSeq
+            case (subst, prems) if freeVars forall (subst isDefinedAt _) =>
+              Seq((subst, followPath(thm, path, subst, prems)))
             case _ => Nil
           }
       })
@@ -254,10 +254,9 @@ trait Analysers { theory: AssistedTheory =>
       concls flatMap {
         case (pattern, from, to, freeVars, premises, path) =>
           instantiatePath(exp, pattern, path, freeVars, premises, avThms) flatMap {
-            case (subst, prems) if freeVars forall (subst isDefinedAt _) =>
-              followPath(thm, path, subst, prems).map {
-                case TheoremWithExpression(thm, eq: Equals) => (from(eq), replaceTreeWithPath(expr, exPath, to(eq)), thm)
-              }.toSeq
+            case (subst, prems) if freeVars forall (subst isDefinedAt _) => followPath(thm, path, subst, prems) match {
+              case TheoremWithExpression(thm, eq: Equals) => Seq((from(eq), replaceTreeWithPath(expr, exPath, to(eq)), thm))
+            }
             case _ => Nil
           }
       }
