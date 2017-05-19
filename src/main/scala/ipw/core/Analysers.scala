@@ -181,35 +181,37 @@ trait Analysers { theory: AssistedTheory =>
     case EndOfPath               => Some(thm)
   }
 
+  private def proveDependentSequence(exprs: Seq[Expr], instantiable: Set[Variable], sub: Substitution,
+                                     provedExprs: Seq[Theorem], avThms: Seq[Theorem]): Seq[(Substitution, Seq[Theorem])] = exprs match {
+    case e :: es =>
+      provePattern(replaceFromSymbols(sub, e), instantiable, avThms) flatMap {
+        case (thisSub, thm) =>
+          proveDependentSequence(es, instantiable -- thisSub.keys, sub ++ thisSub, provedExprs :+ thm, avThms)
+      }
+    case _ => Seq((sub, provedExprs))
+  }
+
   // To prove: Vx. A(x) & B(x)
   // Theorems: 
   // - Vx. A(x)
   // - Vx. B(x)
   // =>
   // 
-
   private def provePattern(expr: Expr, instantiableVars: Set[Variable], avThms: Seq[Theorem]): Seq[(Substitution, Theorem)] = {
     /*val paths = expr match {
       case And(exprs) =>
-        def inner(exprs: Seq[Expr]): Seq[Seq[(Substitution, Theorem)]] = exprs match {
-          case e :: es => theoremize(e, thms) map {
-            case (sub, thm) =>
-              inner(es map (replaceFromSymbols(sub, _)))
-          }
-          case _ => Nil
-        }
-        inner(exprs)
-
+        proveDependentSequence(exprs, instantiableVars, Map.empty, Nil, avThms) map (s => (s._1, andI(s._2)))
+/*
       case Forall(vals, body) =>
         conclusionsOf(body) map (_.forallE(vals))
 
       case Implies(assumption, rhs) =>
         conclusionsOf(rhs) map (_.implE(assumption))
-
+*/
       case _ => Nil
     }
-*/
-    avThms.foldLeft[Seq[(Substitution, Theorem)]](Nil) { (acc, thm) =>
+
+    paths ++ */ avThms.foldLeft[Seq[(Substitution, Theorem)]](Nil) { (acc, thm) =>
       acc ++ (conclusionsOf(thm.expression) flatMap {
         case Conclusion(pattern, freeVars, premises, path) =>
           instantiatePath(expr, pattern, path, freeVars ++ instantiableVars, premises, avThms) flatMap {
@@ -217,7 +219,7 @@ trait Analysers { theory: AssistedTheory =>
               followPath(thm, path, subst, prems).map { (subst, _) }.toSeq
           }
       })
-    }
+    } filter (p => instantiableVars forall (p._1 isDefinedAt _))
   }
 
   /**
@@ -226,21 +228,12 @@ trait Analysers { theory: AssistedTheory =>
    *  - If doesn't appear at all in the formula, then instantiate it with any value
    *  		=> CURRENTLY A LIMITATION (need to conceive a recursive algorithm to generate value of any type I guess, but no time)
    *
-   *  - If it appears in a premise of an implication
+   *  - If it appears in a premise of an implication, try to find it with unification
    */
   private def instantiatePath(exp: Expr, pattern: Expr, path: Path, vars: Set[Variable], premises: Seq[Expr], avThms: Seq[Theorem]): Seq[(Substitution, Seq[Theorem])] = {
-    def provePremises(prems: Seq[Expr], instantiable: Set[Variable], sub: Substitution, provedPrem: Seq[Theorem]): Seq[(Substitution, Seq[Theorem])] = prems match {
-      case p :: ps =>
-        provePattern(replaceFromSymbols(sub, p), instantiable, avThms) flatMap {
-          case (thisSub, thm) =>
-            provePremises(ps, instantiable -- thisSub.keys, sub ++ thisSub, provedPrem :+ thm)
-        }
-      case _ => Seq((sub, provedPrem))
-    }
-
     unify(exp, pattern, vars) match {
-      case Some(subst) => provePremises(premises, vars filterNot (subst isDefinedAt _), subst, Nil)
-      case _ => Nil
+      case Some(subst) => proveDependentSequence(premises, vars filterNot (subst isDefinedAt _), subst, Nil, avThms)
+      case _           => Nil
     }
   }
 
