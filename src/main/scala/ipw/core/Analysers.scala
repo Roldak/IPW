@@ -18,7 +18,7 @@ private object Utils {
 
   def asADTType(tpe: Type): Option[ADTType] = tpe match {
     case t: ADTType => Some(t)
-    case _          => None
+    case _ => None
   }
 }
 
@@ -29,11 +29,11 @@ trait Analysers { theory: AssistedTheory =>
     private def isInnerOrSelf(inner: Expr): Boolean = inner == hyp.expression || isInner(inner)
 
     def isInner(inner: Expr): Boolean = inner match {
-      case v: Variable           => variablesSet.contains(v)
-      case ADTSelector(adt, _)   => isInnerOrSelf(adt)
+      case v: Variable => variablesSet.contains(v)
+      case ADTSelector(adt, _) => isInnerOrSelf(adt)
       case TupleSelect(tuple, _) => isInnerOrSelf(tuple)
-      case MapApply(map, _)      => isInnerOrSelf(map)
-      case _                     => false
+      case MapApply(map, _) => isInnerOrSelf(map)
+      case _ => false
     }
   }
 
@@ -149,7 +149,7 @@ trait Analysers { theory: AssistedTheory =>
           case ((Some(subst), instantiable), (sp1, sp2)) =>
             unify(replaceFromSymbols(subst, sp1), replaceFromSymbols(subst, sp2), instantiable) match {
               case Some(stepSubst) => (Some(subst ++ stepSubst), instantiable -- stepSubst.keys)
-              case _               => (None, instantiable)
+              case _ => (None, instantiable)
             }
           case _ => (None, Set.empty)
         }._1
@@ -162,7 +162,7 @@ trait Analysers { theory: AssistedTheory =>
 
   private implicit def attemptToOption[T](x: Attempt[T]): Option[T] = x match {
     case Success(v) => Some(v)
-    case _          => None
+    case _ => None
   }
 
   private object TheoremWithExpression {
@@ -174,16 +174,20 @@ trait Analysers { theory: AssistedTheory =>
    * with the help of a substitution to instantiate foralls.
    */
   private def followPath(thm: Theorem, path: Path, subst: Substitution, instPrems: Seq[Theorem]): Option[Theorem] = path match {
-    case NotE(next)              => followPath(notE(thm), next, subst, instPrems)
-    case AndE(i, next)           => followPath(andE(thm)(i), next, subst, instPrems)
-    case ForallE(vals, next)     => followPath(forallE(thm)(subst(vals.head.toVariable), (vals.tail map (v => subst(v.toVariable)): _*)), next, subst, instPrems)
+    case NotE(next) => followPath(notE(thm), next, subst, instPrems)
+    case AndE(i, next) => followPath(andE(thm)(i), next, subst, instPrems)
+    case ForallE(vals, next) =>
+      if (vals forall (subst isDefinedAt _.toVariable))
+        followPath(forallE(thm)(subst(vals.head.toVariable), (vals.tail map (v => subst(v.toVariable)): _*)), next, subst, instPrems)
+      else None
+
     case ImplE(assumption, next) => followPath(implE(thm)(_.by(instPrems.head)), next, subst, instPrems.tail)
-    case EndOfPath               => Some(thm)
+    case EndOfPath => Some(thm)
   }
 
   private def proveDependentSequence(exprs: Seq[Expr], instantiable: Set[Variable], sub: Substitution,
-                                     provedExprs: Seq[Theorem], avThms: Seq[Theorem]): Seq[(Substitution, Seq[Theorem])] = exprs match {
-    case e :: es =>
+    provedExprs: Seq[Theorem], avThms: Seq[Theorem]): Seq[(Substitution, Seq[Theorem])] = exprs match {
+    case Seq(e, es @ _*) =>
       provePattern(replaceFromSymbols(sub, e), instantiable, avThms) flatMap {
         case (thisSub, thm) =>
           proveDependentSequence(es, instantiable -- thisSub.keys, sub ++ thisSub, provedExprs :+ thm, avThms)
@@ -198,20 +202,20 @@ trait Analysers { theory: AssistedTheory =>
   // =>
   // 
   private def provePattern(expr: Expr, instantiableVars: Set[Variable], avThms: Seq[Theorem]): Seq[(Substitution, Theorem)] = {
-    /*val paths = expr match {
+    val paths = expr match {
       case And(exprs) =>
         proveDependentSequence(exprs, instantiableVars, Map.empty, Nil, avThms) map (s => (s._1, andI(s._2)))
-/*
+
       case Forall(vals, body) =>
-        conclusionsOf(body) map (_.forallE(vals))
+        Nil
 
       case Implies(assumption, rhs) =>
-        conclusionsOf(rhs) map (_.implE(assumption))
-*/
+        Nil
+
       case _ => Nil
     }
 
-    paths ++ */ avThms.foldLeft[Seq[(Substitution, Theorem)]](Nil) { (acc, thm) =>
+    paths ++ avThms.foldLeft[Seq[(Substitution, Theorem)]](Nil) { (acc, thm) =>
       acc ++ (conclusionsOf(thm.expression) flatMap {
         case Conclusion(pattern, freeVars, premises, path) =>
           instantiatePath(expr, pattern, path, freeVars ++ instantiableVars, premises, avThms) flatMap {
@@ -219,7 +223,7 @@ trait Analysers { theory: AssistedTheory =>
               followPath(thm, path, subst, prems).map { (subst, _) }.toSeq
           }
       })
-    } filter (p => instantiableVars forall (p._1 isDefinedAt _))
+    }
   }
 
   /**
@@ -233,7 +237,7 @@ trait Analysers { theory: AssistedTheory =>
   private def instantiatePath(exp: Expr, pattern: Expr, path: Path, vars: Set[Variable], premises: Seq[Expr], avThms: Seq[Theorem]): Seq[(Substitution, Seq[Theorem])] = {
     unify(exp, pattern, vars) match {
       case Some(subst) => proveDependentSequence(premises, vars filterNot (subst isDefinedAt _), subst, Nil, avThms)
-      case _           => Nil
+      case _ => Nil
     }
   }
 
@@ -279,7 +283,7 @@ trait Analysers { theory: AssistedTheory =>
   private def collectInvocations(e: Expr): Seq[NamedSuggestion] = functionCallsOf(e).map { inv =>
     def result(): (Expr, Theorem) = PartialEvaluator.default(program, Some(inv)).eval(e) match {
       case Successful(ev) => (ev, prove(e === ev))
-      case _              => (e, truth)
+      case _ => (e, truth)
     }
     (s"Expand invocation of '${inv.id}'", RewriteSuggestion(inv, RewriteResult(result)))
   }.toSeq
@@ -294,7 +298,7 @@ trait Analysers { theory: AssistedTheory =>
         if (ihs.isInner(e)) {
           ihs.hypothesis(e) match {
             case Success(thm) => Set((s"IH on `$e`", thm))
-            case Failure(_)   => Set.empty[(String, Theorem)]
+            case Failure(_) => Set.empty[(String, Theorem)]
           }
         } else Set.empty[(String, Theorem)]
       }

@@ -72,32 +72,20 @@ object Main {
     def isUnit(f: Expr, z: Expr): Expr = forall("x" :: A)(x => f(x, z) === x && f(z, x) === x)
 
     def isMonoid(f: Expr, z: Expr): Expr = and(isAssociative(f), isUnit(f, z))
-
+/*
     val lemma = IPWprove(
       forall("f" :: ((A, A) =>: A), "z" :: A)((f, z) => isMonoid(f, z) ==> forall("l" :: ListA, "x" :: A)((l, x) => foldl(f, x, l) === f(x, foldl(f, z, l)))),
       proofsFile,
       Map.empty)
       
     println(lemma)
+    */
     
-    val theTheorem = IPWprove(
-      forall("f" :: ((A, A) =>: A), "z" :: A)((f, z) => isMonoid(f, z) ==> forall("l" :: ListA)(l => foldl(f, z, l) === foldr(f, z, l))),
-      proofsFile,
-      Map("lemma" -> lemma))
-      
-    println(theTheorem)
-
-    val theorem = forallI("f" :: ((A, A) =>: A), "z" :: A) { (f, z) =>
+    val lemma = forallI("f" :: ((A, A) =>: A), "z" :: A) { (f, z) =>
       implI(isMonoid(f, z)) { isMonoid =>
         val Seq(isAssoc, isUnit) = andE(isMonoid): Seq[Theorem]
-
-        val lemma = IPWprove(
-          forall("l" :: ListA, "x" :: A)((l, x) => foldl(f, x, l) === f(x, foldl(f, z, l))),
-          proofsFile,
-          Map("Associativity of `f`" -> isAssoc,
-            "Unity of `f`" -> isUnit))
-        /*
-        val lemma2 = structuralInduction((l: Expr) => forall("x" :: A) {
+        
+        structuralInduction((l: Expr) => forall("x" :: A) {
           x => foldl(f, x, l) === f(x, foldl(f, z, l))
         }, "l" :: ListA) {
           case (ihs, goal) =>
@@ -122,8 +110,6 @@ object Main {
               case C(`nil`) => isUnit
             }
         }
-*/
-        println(lemma)
         /*
         structuralInduction((l: Expr) => foldl(f, z, l) === foldr(f, z, l), "l" :: ListA) {
           case (ihs, goal) =>
@@ -144,15 +130,20 @@ object Main {
               case C(`nil`) => trivial
             }
         }*/
-
+/*
         IPWprove(
           forall("l" :: ListA)(l => foldl(f, z, l) === foldr(f, z, l)),
           proofsFile,
-          Map("Lemma" -> lemma, "unity of `f`" -> isUnit, "Associativity of `f`" -> isAssoc))
+          Map("Lemma" -> lemma, "unity of `f`" -> isUnit, "Associativity of `f`" -> isAssoc))*/
       }
     }
 
-    println(theorem)
+    val theTheorem = IPWprove(
+      forall("f" :: ((A, A) =>: A), "z" :: A)((f, z) => isMonoid(f, z) ==> forall("l" :: ListA)(l => foldl(f, z, l) === foldr(f, z, l))),
+      proofsFile,
+      Map("lemma" -> lemma))
+      
+    println(theTheorem)
   }
 
   def mai(args: Array[String]): Unit = {
