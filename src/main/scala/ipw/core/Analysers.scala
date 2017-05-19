@@ -59,7 +59,8 @@ trait Analysers { theory: AssistedTheory =>
     def forallE(vals: Seq[ValDef]) = {
       val freshVals = vals map (_.freshen)
       val freshVars = freshVals map (_.toVariable)
-      Conclusion(replaceFromSymbols(vals.map(_.toVariable).zip(freshVars).toMap, expr), freeVars ++ freshVars, premises, ForallE(freshVals, path))
+      val subst = vals.map(_.toVariable).zip(freshVars).toMap
+      Conclusion(replaceFromSymbols(subst, expr), freeVars ++ freshVars, premises map (replaceFromSymbols(subst, _)), ForallE(freshVals, path))
     }
     def implE(assumption: Expr) = Conclusion(expr, freeVars, premises :+ assumption, ImplE(assumption, path))
   }
@@ -105,14 +106,24 @@ trait Analysers { theory: AssistedTheory =>
    * Unifies the two patterns, where instantiableVars denotes the set of variables appearing in any of the two patterns that are instantiable.
    */
   private def unify(p1: Expr, p2: Expr, instantiableVars: Set[Variable]): Option[Substitution] = (p1, p2) match {
-    case (v1: Variable, v2: Variable) if v1 == v2 => 
+    case (v1: Variable, v2: Variable) if v1 == v2 =>
       if (instantiableVars(v1)) None
       else Some(Map.empty)
+
+    case (v1: Variable, v2: Variable) if instantiableVars(v1) =>
+      if (instantiableVars(v2)) None
+      else if (v1.tpe == v2.tpe) Some(Map(v1 -> v2))
+      else None
+
+    case (v1: Variable, v2: Variable) if instantiableVars(v2) =>
+      if (instantiableVars(v1)) None
+      else if (v2.tpe == v1.tpe) Some(Map(v2 -> v1))
+      else None
 
     case (expr, pv: Variable) =>
       if (instantiableVars(pv) && expr.getType == pv.tpe) Some(Map(pv -> expr))
       else None
-      
+
     case (pv: Variable, expr) =>
       if (instantiableVars(pv) && expr.getType == pv.tpe) Some(Map(pv -> expr))
       else None
@@ -135,8 +146,8 @@ trait Analysers { theory: AssistedTheory =>
         //     (The failure is then propagated to the base unification.)
         //  - The instantiableVars become (equal or) smaller, because some of them have been successfully unified with some expression.
         exprs1.zip(subExprs2).foldLeft[(Option[Substitution], Set[Variable])]((Some(Map.empty), instantiableVars)) {
-          case ((Some(subst), instantiable), (eexpr, pexpr)) =>
-            unify(eexpr, pexpr, instantiable) match {
+          case ((Some(subst), instantiable), (sp1, sp2)) =>
+            unify(replaceFromSymbols(subst, sp1), replaceFromSymbols(subst, sp2), instantiable) match {
               case Some(stepSubst) => (Some(subst ++ stepSubst), instantiable -- stepSubst.keys)
               case _               => (None, instantiable)
             }
@@ -162,12 +173,51 @@ trait Analysers { theory: AssistedTheory =>
    * Generates a new theorem from a given theorem by following elimination rules given by the path,
    * with the help of a substitution to instantiate foralls.
    */
-  private def followPath(thm: Theorem, path: Path, subst: Substitution): Option[Theorem] = path match {
-    case NotE(next)              => followPath(notE(thm), next, subst)
-    case AndE(i, next)           => followPath(andE(thm)(i), next, subst)
-    case ForallE(vals, next)     => followPath(forallE(thm)(subst(vals.head.toVariable), (vals.tail map (v => subst(v.toVariable)): _*)), next, subst)
-    case ImplE(assumption, next) => ???
+  private def followPath(thm: Theorem, path: Path, subst: Substitution, instPrems: Seq[Theorem]): Option[Theorem] = path match {
+    case NotE(next)              => followPath(notE(thm), next, subst, instPrems)
+    case AndE(i, next)           => followPath(andE(thm)(i), next, subst, instPrems)
+    case ForallE(vals, next)     => followPath(forallE(thm)(subst(vals.head.toVariable), (vals.tail map (v => subst(v.toVariable)): _*)), next, subst, instPrems)
+    case ImplE(assumption, next) => followPath(implE(thm)(_.by(instPrems.head)), next, subst, instPrems.tail)
     case EndOfPath               => Some(thm)
+  }
+
+  // To prove: Vx. A(x) & B(x)
+  // Theorems: 
+  // - Vx. A(x)
+  // - Vx. B(x)
+  // =>
+  // 
+
+  private def provePattern(expr: Expr, instantiableVars: Set[Variable], avThms: Seq[Theorem]): Seq[(Substitution, Theorem)] = {
+    /*val paths = expr match {
+      case And(exprs) =>
+        def inner(exprs: Seq[Expr]): Seq[Seq[(Substitution, Theorem)]] = exprs match {
+          case e :: es => theoremize(e, thms) map {
+            case (sub, thm) =>
+              inner(es map (replaceFromSymbols(sub, _)))
+          }
+          case _ => Nil
+        }
+        inner(exprs)
+
+      case Forall(vals, body) =>
+        conclusionsOf(body) map (_.forallE(vals))
+
+      case Implies(assumption, rhs) =>
+        conclusionsOf(rhs) map (_.implE(assumption))
+
+      case _ => Nil
+    }
+*/
+    avThms.foldLeft[Seq[(Substitution, Theorem)]](Nil) { (acc, thm) =>
+      acc ++ (conclusionsOf(thm.expression) flatMap {
+        case Conclusion(pattern, freeVars, premises, path) =>
+          instantiatePath(expr, pattern, path, freeVars ++ instantiableVars, premises, avThms) flatMap {
+            case (subst, prems) =>
+              followPath(thm, path, subst, prems).map { (subst, _) }.toSeq
+          }
+      })
+    }
   }
 
   /**
@@ -178,16 +228,27 @@ trait Analysers { theory: AssistedTheory =>
    *
    *  - If it appears in a premise of an implication
    */
-  private def instantiatePathElements(exp: Expr, pattern: Expr, path: Path, vars: Set[Variable], premises: Seq[Expr]): Option[Substitution] = {
-    unify(exp, pattern, vars)
+  private def instantiatePath(exp: Expr, pattern: Expr, path: Path, vars: Set[Variable], premises: Seq[Expr], avThms: Seq[Theorem]): Seq[(Substitution, Seq[Theorem])] = {
+    def provePremises(prems: Seq[Expr], instantiable: Set[Variable], sub: Substitution, provedPrem: Seq[Theorem]): Seq[(Substitution, Seq[Theorem])] = prems match {
+      case p :: ps =>
+        provePattern(replaceFromSymbols(sub, p), instantiable, avThms) flatMap {
+          case (thisSub, thm) =>
+            provePremises(ps, instantiable -- thisSub.keys, sub ++ thisSub, provedPrem :+ thm)
+        }
+      case _ => Seq((sub, provedPrem))
+    }
+
+    unify(exp, pattern, vars) match {
+      case Some(subst) => provePremises(premises, vars filterNot (subst isDefinedAt _), subst, Nil)
+      case _ => Nil
+    }
   }
 
   /**
    * Given a root expression expr and a root theorem thm,
    * tries to find subexpressions inside expr where some conclusion of thm could be applied.
    */
-  private def instantiateConclusion(expr: Expr, thm: Theorem): Seq[(Expr, Expr, Theorem)] = {
-    println(expr)
+  private def instantiateConclusion(expr: Expr, thm: Theorem, avThms: Seq[Theorem]): Seq[(Expr, Expr, Theorem)] = {
     val concls = conclusionsOf(thm.expression) flatMap (_ match {
       case concl @ Conclusion(Equals(a, b), vars, premises, path) => Seq(
         (a, (x: Equals) => x.lhs, (x: Equals) => x.rhs, vars, premises, path),
@@ -198,11 +259,11 @@ trait Analysers { theory: AssistedTheory =>
     collectPreorderWithPath { (exp, exPath) =>
       concls flatMap {
         case (pattern, from, to, freeVars, premises, path) =>
-          instantiatePathElements(exp, pattern, path, freeVars, premises) match {
-            case Some(subst) => followPath(thm, path, subst).map {
-              case TheoremWithExpression(thm, eq: Equals) => (from(eq), replaceTreeWithPath(expr, exPath, to(eq)), thm)
-            }.toSeq
-            case _ => Nil
+          instantiatePath(exp, pattern, path, freeVars, premises, avThms) flatMap {
+            case (subst, prems) =>
+              followPath(thm, path, subst, prems).map {
+                case TheoremWithExpression(thm, eq: Equals) => (from(eq), replaceTreeWithPath(expr, exPath, to(eq)), thm)
+              }.toSeq
           }
       }
     }(expr).groupBy(x => (x._1, x._2)).map(_._2.head).toSeq
@@ -215,7 +276,7 @@ trait Analysers { theory: AssistedTheory =>
   private def findTheoremApplications(expr: Expr, thms: Map[String, Theorem]): Seq[NamedSuggestion] = {
     thms.toSeq flatMap {
       case (name, thm) =>
-        instantiateConclusion(expr, thm) map { case (subj, res, proof) => (s"Apply theorem $name", RewriteSuggestion(subj, RewriteResult(res, proof))) }
+        instantiateConclusion(expr, thm, thms.values.toSeq) map { case (subj, res, proof) => (s"Apply theorem $name", RewriteSuggestion(subj, RewriteResult(res, proof))) }
     }
   }
 
