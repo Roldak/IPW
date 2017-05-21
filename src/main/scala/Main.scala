@@ -5,7 +5,7 @@ import welder._
 import ipw._
 
 object Main {
-  val proofsFile = new java.io.File("test.iwf")
+  val proofsFile = "test.iwf"
 
   def main(args: Array[String]): Unit = {
 

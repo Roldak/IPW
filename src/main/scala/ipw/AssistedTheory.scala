@@ -1,6 +1,5 @@
 package ipw
 
-import java.io.{ File => JFile }
 import scala.annotation.tailrec
 import inox._
 import inox.trees._
@@ -16,13 +15,14 @@ import scala.concurrent.Promise
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
+import ipw.io.IWFileInterface
 
 trait AssistedTheory
     extends Theory
     with Analysers
     with PathTreeOps
     with Suggestions
-    with AssistantWindow { self =>
+    with AssistantWindow { self: AssistedTheory with IWFileInterface =>
 
   protected[ipw] type ProofState = (Expr, Seq[NamedSuggestion], Map[String, Theorem], Boolean)
   protected[ipw] type UpdateStep = Suggestion
@@ -60,7 +60,7 @@ trait AssistedTheory
     case Following(ctx) => f(ctx)
   }
 
-  private def IPWproveInner(expr: Expr, source: JFile, thms: Map[String, Theorem],
+  private def IPWproveInner(expr: Expr, source: String, thms: Map[String, Theorem],
                             ihs: Seq[StructuralInductionHypotheses] = Nil, guiCtx: GUIContext = NewWindow("Proof")): Attempt[Theorem] = onGUITab(guiCtx) {
     case (suggestingEnd, tab) =>
 
@@ -81,6 +81,8 @@ trait AssistedTheory
         suggestingEnd.write((step, suggestions ++ extraSuggestions, newThms, undo))
 
         val choice = suggestingEnd.read
+        
+        writeIWFDocument(source, (expr, thms.values.toSeq), List(choice))
 
         choice match {
           case RewriteSuggestion(_, RewriteResult(next, proof)) =>
@@ -125,7 +127,7 @@ trait AssistedTheory
       proveForever()
   }
 
-  def IPWprove(expr: Expr, source: JFile, thms: Map[String, Theorem],
+  def IPWprove(expr: Expr, source: String, thms: Map[String, Theorem],
                ihs: Seq[StructuralInductionHypotheses] = Nil, guiCtx: GUIContext = NewWindow("Proof")): Attempt[Theorem] = expr match {
     case Not(Not(e)) =>
       IPWprove(e, source, thms, ihs, guiCtx)
