@@ -151,7 +151,7 @@ trait Analysers { theory: AssistedTheory =>
               case Some(stepSubst) => (Some(subst ++ stepSubst), instantiable -- stepSubst.keys)
               case _               => (None, instantiable)
             }
-          case _ => (None, Set.empty)
+          case (none, _) => none
         }._1
       } else
         None
@@ -191,20 +191,19 @@ trait Analysers { theory: AssistedTheory =>
    * The main mechanism for finding the proofs (and the substitutions) is unification.
    */
   private def provePattern(expr: Expr, instantiableVars: Set[Variable], avThms: Seq[Theorem]): Seq[(Substitution, Theorem)] = {
-    val paths = expr match {
+    val deeps = expr match {
       case And(exprs) =>
         proveDependentSequence(exprs, instantiableVars, Map.empty, avThms) map (s => (s._1, andI(s._2)))
 
       case Forall(vals, body) =>
         provePattern(body, instantiableVars, avThms) flatMap (s => forallI(vals)(_ => s._2) map (thm => Seq((s._1, thm))) getOrElse (Nil))
-
-      case Implies(assumption, rhs) =>
-        Nil
+        
+      // TODO: support more cases
 
       case _ => Nil
     }
 
-    paths ++ avThms.foldLeft[Seq[(Substitution, Theorem)]](Nil) { (acc, thm) =>
+    deeps ++ avThms.foldLeft[Seq[(Substitution, Theorem)]](Nil) { (acc, thm) =>
       acc ++ (conclusionsOf(thm.expression) flatMap {
         case Conclusion(pattern, freeVars, premises, path) =>
           instantiatePath(expr, pattern, path, freeVars ++ instantiableVars, premises, avThms) flatMap {
@@ -220,7 +219,7 @@ trait Analysers { theory: AssistedTheory =>
    */
   private def proveDependentSequence(exprs: Seq[Expr], instantiable: Set[Variable], sub: Substitution,
                                      avThms: Seq[Theorem], provedExprs: Seq[Theorem] = Nil): Seq[(Substitution, Seq[Theorem])] = exprs match {
-    case Seq(e, es @ _*) =>
+    case e +: es =>
       provePattern(replaceFromSymbols(sub, e), instantiable, avThms) flatMap {
         case (thisSub, thm) =>
           proveDependentSequence(es, instantiable -- thisSub.keys, sub ++ thisSub, avThms, provedExprs :+ thm)
