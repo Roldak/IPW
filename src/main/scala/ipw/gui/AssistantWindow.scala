@@ -111,7 +111,7 @@ trait AssistantWindow
             elemStatus.get(expr) foreach (elem.right = _)
 
             suggestionBuffer.clear()
-            suggestionBuffer ++= suggs.groupBy(_._1).map { case (k, v) => (k, v map (_._2)) }.toSeq
+            suggestionBuffer ++= suggs.groupBy(_._1).map(s => (s._1, s._2 map (_._2))).toSeq.sortBy(_._1)
 
             theoremPane.clear
             thms foreach {
