@@ -22,7 +22,7 @@ private object Utils {
   }
 }
 
-trait Analysers { theory: AssistedTheory =>
+protected[ipw] trait Analysers { theory: AssistedTheory =>
   private implicit class IHUtils(hyp: StructuralInductionHypotheses) {
     lazy val variablesSet = hyp.variables.toSet
 

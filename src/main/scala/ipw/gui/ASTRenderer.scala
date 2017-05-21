@@ -14,7 +14,7 @@ import javafx.scene.input.MouseEvent
 import scalafx.scene.Node
 import scalafx.scene.paint.Paint
 
-trait Rendering { window: AssistantWindow =>
+protected[gui] trait Rendering { window: AssistantWindow =>
 
   protected object Consts {
     def OpeningBracket(implicit ctx: FlowContext) = Code.Operator("(")

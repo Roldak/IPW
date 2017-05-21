@@ -5,7 +5,7 @@ import inox.evaluators._
 
 import scala.collection.BitSet
 
-trait PartialEvaluator
+protected[ipw] trait PartialEvaluator
     extends ContextualEvaluator
     with DeterministicEvaluator
     with SolvingEvaluator {

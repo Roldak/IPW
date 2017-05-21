@@ -9,7 +9,7 @@ import welder._
 import ipw.eval.PartialEvaluator
 import ipw.AssistedTheory
 
-trait Suggestions { theory: AssistedTheory =>
+protected[ipw] trait Suggestions { theory: AssistedTheory =>
   import trees._
   
   protected[ipw] class RewriteResult private (computeRes: () => (Expr, Theorem)) {

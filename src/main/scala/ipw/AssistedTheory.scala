@@ -54,6 +54,7 @@ trait AssistedTheory
     case NewTab(title, window) =>
       val (choosingEnd, suggestingEnd) = SynchronizedChannel[ProofState, UpdateStep]()
       val tab = window.openNewTab(title, choosingEnd)
+      window.show
       f(suggestingEnd, Await.result(tab, Duration.Inf))
 
     case Following(ctx) => f(ctx)

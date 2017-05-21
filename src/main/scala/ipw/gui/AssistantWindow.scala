@@ -22,8 +22,9 @@ import scala.concurrent.duration.Duration
 import scala.concurrent._
 import scala.collection.mutable.{ Map => MutableMap }
 import scalafx.scene.control.Alert.AlertType
+import com.sun.javafx.tk.Toolkit
 
-trait AssistantWindow
+protected[ipw] trait AssistantWindow
     extends Rendering
     with ExpressionPanes
     with Modes { theory: AssistedTheory =>
@@ -139,6 +140,8 @@ trait AssistantWindow
 
       tabPromise.future
     }
+    
+    def show: Unit = Platform.runLater { stage.show() }
   }
 
   protected[ipw] case class WindowTab(statusCallback: StatusCallback, window: Window, title: String)
@@ -160,7 +163,7 @@ trait AssistantWindow
         }
 
         onCloseRequest = handle {
-          tabsList.foreach { tab => tab.onClosed.value.handle(null) }
+          tabsList.foreach { _.onClosed.value.handle(null) }
         }
       }
 
@@ -182,7 +185,8 @@ trait AssistantWindow
       // "return" a callback to the driver which he can call to update on the status of some proof steps
       windowPromise.success(new Window(stage, appendTab))
       
-      stage.showAndWait()
+      // best hack 2k17
+      Toolkit.getToolkit.enterNestedEventLoop(stage.delegate) 
     }
 
     windowPromise.future

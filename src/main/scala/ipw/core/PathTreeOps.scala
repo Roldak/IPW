@@ -6,7 +6,7 @@ import inox.trees.dsl._
 import inox.trees.exprOps._
 import ipw.AssistedTheory
 
-trait PathTreeOps { theory: AssistedTheory =>
+protected[ipw] trait PathTreeOps { theory: AssistedTheory =>
   type TreePath = Seq[Int]
   
   def foldWithPath[T](f: (Source, TreePath, Seq[T]) => T)(e: Source, p: TreePath): T = {

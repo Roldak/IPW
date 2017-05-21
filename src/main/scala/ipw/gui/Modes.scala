@@ -7,7 +7,7 @@ import inox._
 import inox.trees._
 import inox.trees.dsl._
 
-trait Modes { window: AssistantWindow =>
+protected[gui] trait Modes { window: AssistantWindow =>
 
   protected[gui] sealed abstract class InputMode {
     def onNewRenderer(renderer: ASTRenderer): Unit = {}
