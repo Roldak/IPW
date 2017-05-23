@@ -9,6 +9,7 @@ import ipw.gui.AssistantWindow
 import ipw.core._
 import ipw.concurrent.SynchronizedChannel
 import ipw.concurrent.Utils._
+import ipw.io._
 import java.util.concurrent.BlockingDeque
 import java.util.concurrent.LinkedBlockingDeque
 import scala.concurrent.Promise
@@ -22,7 +23,8 @@ trait AssistedTheory
     with Analysers
     with PathTreeOps
     with Suggestions
-    with AssistantWindow { self: AssistedTheory with IWFileInterface =>
+    with AssistantWindow
+    with IOs { self: AssistedTheory with IWFileInterface =>
 
   protected[ipw] type ProofState = (Expr, Seq[NamedSuggestion], Map[String, Theorem], Boolean)
   protected[ipw] type UpdateStep = Suggestion
@@ -43,6 +45,8 @@ trait AssistedTheory
   private case class Following(ctx: ProofContext) extends GUIContext
 
   private val UndoSuggestion = ("Undo", Undo)
+  
+  private val RestartRequestedFailureReason = Aborted("RestartRequested")
 
   private def onGUITab[T](ctx: GUIContext)(f: ProofContext => T): T = ctx match {
     case NewWindow(tabTitle) =>
@@ -60,8 +64,8 @@ trait AssistedTheory
     case Following(ctx) => f(ctx)
   }
 
-  private def IPWproveInner(expr: Expr, source: String, thms: Map[String, Theorem],
-                            ihs: Seq[StructuralInductionHypotheses] = Nil, guiCtx: GUIContext = NewWindow("Proof")): Attempt[Theorem] = onGUITab(guiCtx) {
+  private def IPWproveInner(expr: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses] = Nil, 
+                            guiCtx: GUIContext = NewWindow("Proof")): Attempt[Theorem] = onGUITab(guiCtx) {
     case (suggestingEnd, tab) =>
 
       val proofAttempts = new LinkedBlockingDeque[Option[(Expr, Theorem)]]
@@ -81,8 +85,6 @@ trait AssistedTheory
         suggestingEnd.write((step, suggestions ++ extraSuggestions, newThms, undo))
 
         val choice = suggestingEnd.read
-        
-        writeIWFDocument(source, (expr, thms.values.toSeq), List(choice))
 
         choice match {
           case RewriteSuggestion(_, RewriteResult(next, proof)) =>
@@ -127,14 +129,14 @@ trait AssistedTheory
       proveForever()
   }
 
-  def IPWprove(expr: Expr, source: String, thms: Map[String, Theorem],
-               ihs: Seq[StructuralInductionHypotheses] = Nil, guiCtx: GUIContext = NewWindow("Proof")): Attempt[Theorem] = expr match {
+  private def IPWproveTopLevel(expr: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses] = Nil, 
+                               guiCtx: GUIContext = NewWindow("Proof")): Attempt[Theorem] = expr match {
     case Not(Not(e)) =>
-      IPWprove(e, source, thms, ihs, guiCtx)
+      IPWproveTopLevel(e, thms, ihs, guiCtx)
 
     case And(exprs) => onGUITab(guiCtx) {
       case (_, tab) =>
-        andI(exprs.zipWithIndex map { case (e, i) => IPWprove(e, source, thms, ihs, NewTab(s"${tab.title}[$i]", tab.window)).get })
+        andI(exprs.zipWithIndex map { case (e, i) => IPWproveTopLevel(e, thms, ihs, NewTab(s"${tab.title}[$i]", tab.window)).get })
     }
 
     case Forall(v :: vals, body) => onGUITab(guiCtx) {
@@ -144,13 +146,13 @@ trait AssistedTheory
 
         suggestingEnd.read match {
           case FixVariable =>
-            forallI(v)(_ => IPWprove(if (vals.isEmpty) body else Forall(vals, body), source, thms, ihs, Following(proofCtx)))
+            forallI(v)(_ => IPWproveTopLevel(if (vals.isEmpty) body else Forall(vals, body), thms, ihs, Following(proofCtx)))
 
           case StructuralInduction =>
             structuralInduction(expr, v) {
               case (tihs, goal) =>
                 val Some((caseId, _)) = C.unapplySeq(tihs.expression)
-                IPWprove(goal.expression, source, thms, ihs :+ tihs, NewTab(s"${tab.title} case '${caseId}'", tab.window))
+                IPWproveTopLevel(goal.expression, thms, ihs :+ tihs, NewTab(s"${tab.title} case '${caseId}'", tab.window))
             }
 
           case Abort => Attempt.fail("Operation aborted")
@@ -171,7 +173,7 @@ trait AssistedTheory
                 case _                                       => Seq(assumption)
               }
               val newThms = hyps map (h => (promptTheoremName(h.expression, "assumption"), h))
-              IPWprove(body, source, thms ++ newThms, ihs, Following(proofCtx))
+              IPWproveTopLevel(body, thms ++ newThms, ihs, Following(proofCtx))
             }
 
           case other => throw new IllegalStateException(s"Suggestion ${other} is illegal in this context")
@@ -179,6 +181,18 @@ trait AssistedTheory
     }
 
     case _ =>
-      IPWproveInner(expr, source, thms, ihs, guiCtx)
+      IPWproveInner(expr, thms, ihs, guiCtx)
+  }
+  
+  @tailrec
+  final def IPWprove(expr: Expr, source: String, thms: Map[String, Theorem],
+               ihs: Seq[StructuralInductionHypotheses] = Nil, guiCtx: GUIContext = NewWindow("Proof")): Attempt[Theorem] = {
+    val iwf = readProofDocument(source, (expr, thms.map(_._2).toSeq))
+    IPWproveTopLevel(expr, thms, ihs, guiCtx) match {
+      case Failure(RestartRequestedFailureReason) => IPWprove(expr, source, thms, ihs, guiCtx)
+      case other =>
+        iwf.save()
+        other
+    }
   }
 }

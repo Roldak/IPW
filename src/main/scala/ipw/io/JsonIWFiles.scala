@@ -6,6 +6,9 @@ import scala.io.Source
 import java.io.PrintWriter
 import java.io.File
 
+import scala.collection.mutable.{Map => MutableMap}
+import scala.collection.mutable.ArrayBuffer
+
 /*
  * Format:
  * """
@@ -28,44 +31,72 @@ import java.io.File
  * }
  * """
  */
-
 trait JsonIWFiles extends IWFileInterface { theory: AssistedTheory =>
-  override def readIWFDocument(source: String, title: IWFTitle): IWFDocument = {
+  private class JsonProofDocument(
+      private val source: String, 
+      private val id: ProofIdentifier, 
+      private val serializedCases: MutableMap[String, Seq[SerializedChoice]]) extends ProofDocument(source, id) {
+    
+    private val cases = ArrayBuffer[ProofCase]()
+    
+    override def getCase(title: String, suggestingEnd: SuggestingEnd, onStopAutopilot: () => Unit): ProofCase = { 
+      val newCase = new ProofCase(suggestingEnd, onStopAutopilot, ArrayBuffer() ++ serializedCases.getOrElse(title, Nil))
+      cases.append(newCase)
+      newCase
+    }
+    
+    override def save(): Unit = {
+      import net.liftweb.json.JsonDSL._
+      
+      println(cases)
+      
+/*
+      val content = Source.fromFile(source).getLines().mkString
+      val json: JValue = parse(content)
+
+      val newJson: JValue = ("proofs" -> List(
+        ("expression" -> title._1.toString) ~
+          ("theorems" -> title._2.map(_.toString)) ~
+          ("content" -> document.map(_.toString))))
+
+      val merged = json merge newJson
+
+      println(newJson)
+
+      val writer = new PrintWriter(new File(source))
+      writer.write(compact(render(newJson)))
+      writer.close()*/
+    }
+  }
+
+  override def readProofDocument(source: String, id: ProofIdentifier): ProofDocument = {
     val content = Source.fromFile(source).getLines().mkString
     val json = parse(content)
-    
-    val tmp = for {
+
+    val cases = for {
       JObject(child) <- json
       JField("proofs", proofs) <- child
-      JField("expression", expr) <- proofs if title._1.toString == expr
-      JField("theorems", thms) <- proofs
-      JString(thm) <- thms if title._2.exists(t => t.expression.toString == thm)
-      JField("content", content) <- child
-    } yield (content.toString)
-    
-    println(tmp)
-    
-    Nil
-  }
-  
-  override def writeIWFDocument(source: String, title: IWFTitle, document: IWFDocument): Unit = {
-    import net.liftweb.json.JsonDSL._
-    
-    val content = Source.fromFile(source).getLines().mkString
-    val json: JValue = parse(content)
-    
-    val newJson: JValue = ("proofs" -> List(
-        ("expression" -> title._1.toString) ~
-        ("theorems" -> title._2.map(_.toString)) ~
-        ("content" -> document.map(_.toString))
-    ))
-    
-    val merged = json merge newJson
-    
-    println(newJson)
-    
-    val writer = new PrintWriter(new File(source))
-    writer.write(compact(render(newJson)))
-    writer.close()
+      JField("expression", expr) <- proofs if id._1.toString == expr
+      JField("dependencies", deps) <- proofs
+      JString(thm) <- deps if id._2.exists(t => t.expression.toString == thm)
+      JField("cases", cases) <- proofs
+      JField("title", JString(title)) <- cases
+      JField("steps", steps) <- cases
+    } yield {
+      val lst = for {
+        JField("suggs", suggs) <- steps
+        JField("choice", JInt(choice)) <- steps
+      } yield {
+        val lst = for {
+          JString(suggStr) <- suggs
+        } yield suggStr
+        
+        (lst.toSeq, choice.toInt)
+      }
+
+      (title, lst.toSeq)
+    }
+
+    new JsonProofDocument(source, id, MutableMap() ++ cases)
   }
 }
