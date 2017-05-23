@@ -48,7 +48,7 @@ trait AssistedTheory
 
   private val RestartRequestedFailureReason = Aborted("RestartRequested")
 
-  private def onGUITab[T](ctx: GUIContext)(f: ProofContext => T): T = ctx match {
+  private def onGUITab(ctx: GUIContext)(f: ProofContext => Attempt[Theorem]): Attempt[Theorem] = ctx match {
     case NewWindow(tabTitle, doc) =>
       val willTerminate = Promise[Unit] // them lies tho
       val res = onGUITab(NewTab(tabTitle, Await.result(openAssistantWindow(willTerminate.future, doc), Duration.Inf)))(f)
@@ -59,7 +59,13 @@ trait AssistedTheory
     case NewTab(title, window) =>
       val (choosingEnd, suggestingEnd) = SynchronizedChannel[ProofState, UpdateStep]()
       val tab = window.openNewTab(title, choosingEnd)
-      f(window.proofDocument.getCase(title, suggestingEnd, () => window.show), Await.result(tab, Duration.Inf))
+      val proofCase = window.proofDocument.getCase(title, suggestingEnd, () => window.show)
+      f(proofCase, Await.result(tab, Duration.Inf)) match {
+        case attempt @ Success(_) => 
+          proofCase.setComplete
+          attempt
+        case other => other
+      }
 
     case Following(ctx) => f(ctx)
   }

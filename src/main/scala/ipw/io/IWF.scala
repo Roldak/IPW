@@ -19,6 +19,7 @@ protected[ipw] trait IWFileInterface { theory: AssistedTheory =>
 protected[ipw] trait IOs { theory: AssistedTheory with IWFileInterface =>
   protected[ipw] final class ProofCase(
     val title: String,
+    var complete: Boolean,
     val steps: ArrayBuffer[String],
     private val suggestingEnd: SuggestingEnd,
     private val onStopAutoPilot: () => Unit) {
@@ -34,11 +35,11 @@ protected[ipw] trait IOs { theory: AssistedTheory with IWFileInterface =>
           case Some(namedSugg) =>
             i += 1
             return namedSugg._2
-          case _ =>
-            steps.trimEnd(steps.size - i)
+          case _ if !complete =>
+            steps.reduceToSize(i)
             onStopAutoPilot()
         }
-      } else {
+      } else if (!complete) {
         onStopAutoPilot()
       }
 
@@ -86,6 +87,10 @@ protected[ipw] trait IOs { theory: AssistedTheory with IWFileInterface =>
         i += 1
         v
       }
+    }
+    
+    def setComplete: Unit = {
+      complete = true
     }
   }
 

@@ -33,37 +33,45 @@ import scala.collection.mutable.ArrayBuffer
  */
 trait JsonIWFiles extends IWFileInterface { theory: AssistedTheory =>
   private class JsonProofDocument(
-    private val source: String,
-    private val id: ProofIdentifier,
-    private val serializedCases: MutableMap[String, Seq[String]]) extends ProofDocument(source, id) {
+      private val source: String,
+      private val id: ProofIdentifier,
+      private val serializedCases: MutableMap[String, (Boolean, Seq[String])]) extends ProofDocument(source, id) {
 
     import net.liftweb.json.JsonDSL._
 
     private val cases = ArrayBuffer[ProofCase]()
 
     override def getCase(title: String, suggestingEnd: SuggestingEnd, onStopAutopilot: () => Unit): ProofCase = {
-      val newCase = new ProofCase(title, ArrayBuffer() ++ serializedCases.getOrElse(title, Nil), suggestingEnd, onStopAutopilot)
+      val newCase = serializedCases.get(title) map {
+        case (complete, steps) =>
+          new ProofCase(title, complete, ArrayBuffer() ++ steps, suggestingEnd, onStopAutopilot)
+      } getOrElse (new ProofCase(title, false, ArrayBuffer(), suggestingEnd, onStopAutopilot))
       cases.append(newCase)
       newCase
     }
 
     private def renderCase(c: ProofCase): JValue =
       ("title" -> c.title) ~
+        ("complete" -> c.complete) ~
         ("steps" -> c.steps.toList)
 
     override def save(): Unit = {
       println(cases)
 
       val content = Source.fromFile(source).getLines().mkString
-      val json: JValue = parse(content)
+      val original: JValue = parse(content)
 
-      val newJson: JValue = ("proofs" -> List(
+      val withoutOld = original transform {
+        case JField("proofs", proofs) => proofs transform {
+          case JObject(proof) if proof contains JField("expression", id.toString) => JNothing
+        }
+      }
+
+      val newProof: JValue = ("proofs" -> List(
         ("expression" -> id.toString) ~
           ("cases" -> cases.map(renderCase))))
 
-      val merged = json merge newJson
-
-      println(newJson)
+      val merged = withoutOld merge newProof
 
       val writer = new PrintWriter(new File(source))
       writer.write(compact(render(merged)))
@@ -72,7 +80,7 @@ trait JsonIWFiles extends IWFileInterface { theory: AssistedTheory =>
   }
 
   private def readJStringList(lst: List[JValue]): List[String] = for (JString(str) <- lst) yield str
-  
+
   override def readProofDocument(source: String, id: ProofIdentifier): ProofDocument = {
     val content = Source.fromFile(source).getLines().mkString
     val json = parse(content)
@@ -84,9 +92,10 @@ trait JsonIWFiles extends IWFileInterface { theory: AssistedTheory =>
       JField("cases", cases) <- proofs
       JObject(proofCase) <- cases
       JField("title", JString(title)) <- proofCase
+      JField("complete", JBool(complete)) <- proofCase
       JField("steps", JArray(steps)) <- proofCase
     } yield {
-      (title, readJStringList(steps))
+      (title, (complete, readJStringList(steps)))
     }
 
     new JsonProofDocument(source, id, MutableMap() ++ cases)
