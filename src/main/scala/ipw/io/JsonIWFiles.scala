@@ -56,8 +56,6 @@ trait JsonIWFiles extends IWFileInterface { theory: AssistedTheory =>
         ("steps" -> c.steps.toList)
 
     override def save(): Unit = {
-      println(cases)
-
       val content = Source.fromFile(source).getLines().mkString
       val original: JValue = parse(content)
 

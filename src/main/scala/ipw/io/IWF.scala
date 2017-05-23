@@ -18,18 +18,18 @@ protected[ipw] trait IWFileInterface { theory: AssistedTheory =>
 
 protected[ipw] trait IOs { theory: AssistedTheory with IWFileInterface =>
   protected[ipw] final class ProofCase(
-    val title: String,
-    var complete: Boolean,
-    val steps: ArrayBuffer[String],
-    private val suggestingEnd: SuggestingEnd,
-    private val onStopAutoPilot: () => Unit) {
+      val title: String,
+      var complete: Boolean,
+      val steps: ArrayBuffer[String],
+      private val suggestingEnd: SuggestingEnd,
+      private val onStopAutoPilot: () => Unit) {
 
     private val writes = Queue[ProofState]()
     private var i = 0
 
     def read: UpdateStep = {
       val state = writes.dequeue()
-      
+
       if (i < steps.size) { // autopilot
         state._2.find(_._2.toString == steps(i)) match {
           case Some(namedSugg) =>
@@ -38,14 +38,20 @@ protected[ipw] trait IOs { theory: AssistedTheory with IWFileInterface =>
           case _ if !complete =>
             steps.reduceToSize(i)
             onStopAutoPilot()
+          case _ =>
         }
       } else if (!complete) {
         onStopAutoPilot()
       }
-
-      val sugg = suggestingEnd.read
-      steps.append(sugg.toString)
+      
       i += 1
+      
+      val sugg = suggestingEnd.read
+      sugg match {
+        case Abort =>
+        case Undo  => steps.trimEnd(1)
+        case other => steps.append(other.toString)
+      }
       sugg
     }
 
@@ -88,7 +94,7 @@ protected[ipw] trait IOs { theory: AssistedTheory with IWFileInterface =>
         v
       }
     }
-    
+
     def setComplete: Unit = {
       complete = true
     }
