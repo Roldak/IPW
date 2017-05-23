@@ -10,12 +10,6 @@ import inox.trees.exprOps._
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.Queue
 
-protected[ipw] trait IWFileInterface { theory: AssistedTheory =>
-  protected[ipw]type ProofIdentifier = Expr
-
-  protected[ipw] def readProofDocument(source: String, id: ProofIdentifier): ProofDocument
-}
-
 protected[ipw] trait IOs { theory: AssistedTheory with IWFileInterface =>
   protected[ipw] final class ProofCase(
       val title: String,

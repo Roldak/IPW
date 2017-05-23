@@ -84,10 +84,10 @@ trait JsonIWFiles extends IWFileInterface { theory: AssistedTheory =>
     val json = parse(content)
 
     val cases = for {
-      JObject(child) <- json
-      JField("proofs", proofs) <- child
-      JField("expression", JString(expr)) <- proofs if id.toString == expr
-      JField("cases", cases) <- proofs
+      JField("proofs", proofs) <- json
+      JObject(proof) <- proofs
+      JField("expression", JString(expr)) <- proof if id.toString == expr
+      JField("cases", cases) <- proof
       JObject(proofCase) <- cases
       JField("title", JString(title)) <- proofCase
       JField("complete", JBool(complete)) <- proofCase
