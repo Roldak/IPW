@@ -31,7 +31,7 @@ trait AssistedTheory
   protected[ipw] type ChoosingEnd = SynchronizedChannel.End[ProofState, UpdateStep]
   protected[ipw] type SuggestingEnd = SynchronizedChannel.End[UpdateStep, ProofState]
   protected[ipw] type StatusCallback = (Expr, Status) => Unit
-  private type ProofContext = (SuggestingEnd, WindowTab)
+  private type ProofContext = (ProofCase, WindowTab)
 
   protected[ipw] sealed abstract class Status(val stage: Int, val message: String)
   protected[ipw] case object InQueue extends Status(0, "In queue")
@@ -40,7 +40,7 @@ trait AssistedTheory
   protected[ipw] case object ProofSucceeded extends Status(3, "Success!")
 
   sealed abstract class GUIContext
-  case class NewWindow(tabTitle: String) extends GUIContext
+  case class NewWindow(tabTitle: String, proofDoc: ProofDocument) extends GUIContext
   private case class NewTab(title: String, win: Window) extends GUIContext
   private case class Following(ctx: ProofContext) extends GUIContext
 
@@ -49,23 +49,23 @@ trait AssistedTheory
   private val RestartRequestedFailureReason = Aborted("RestartRequested")
 
   private def onGUITab[T](ctx: GUIContext)(f: ProofContext => T): T = ctx match {
-    case NewWindow(tabTitle) =>
+    case NewWindow(tabTitle, doc) =>
       val willTerminate = Promise[Unit] // them lies tho
-      val res = onGUITab(NewTab(tabTitle, Await.result(openAssistantWindow(willTerminate.future), Duration.Inf)))(f)
+      val res = onGUITab(NewTab(tabTitle, Await.result(openAssistantWindow(willTerminate.future, doc), Duration.Inf)))(f)
       willTerminate.success(())
+      doc.save()
       res
 
     case NewTab(title, window) =>
       val (choosingEnd, suggestingEnd) = SynchronizedChannel[ProofState, UpdateStep]()
       val tab = window.openNewTab(title, choosingEnd)
-      window.show
-      f(suggestingEnd, Await.result(tab, Duration.Inf))
+      f(window.proofDocument.getCase(title, suggestingEnd, () => window.show), Await.result(tab, Duration.Inf))
 
     case Following(ctx) => f(ctx)
   }
 
   private def IPWproveInner(expr: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses] = Nil, 
-                            guiCtx: GUIContext = NewWindow("Proof")): Attempt[Theorem] = onGUITab(guiCtx) {
+                            guiCtx: GUIContext): Attempt[Theorem] = onGUITab(guiCtx) {
     case (suggestingEnd, tab) =>
 
       val proofAttempts = new LinkedBlockingDeque[Option[(Expr, Theorem)]]
@@ -130,7 +130,7 @@ trait AssistedTheory
   }
 
   private def IPWproveTopLevel(expr: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses] = Nil, 
-                               guiCtx: GUIContext = NewWindow("Proof")): Attempt[Theorem] = expr match {
+                               guiCtx: GUIContext): Attempt[Theorem] = expr match {
     case Not(Not(e)) =>
       IPWproveTopLevel(e, thms, ihs, guiCtx)
 
@@ -183,16 +183,14 @@ trait AssistedTheory
     case _ =>
       IPWproveInner(expr, thms, ihs, guiCtx)
   }
-  
+   
   @tailrec
   final def IPWprove(expr: Expr, source: String, thms: Map[String, Theorem],
-               ihs: Seq[StructuralInductionHypotheses] = Nil, guiCtx: GUIContext = NewWindow("Proof")): Attempt[Theorem] = {
-    val iwf = readProofDocument(source, (expr, thms.map(_._2).toSeq))
+               ihs: Seq[StructuralInductionHypotheses] = Nil, title: String = "Proof"): Attempt[Theorem] = {
+    val guiCtx = NewWindow(title, readProofDocument(source, expr))
     IPWproveTopLevel(expr, thms, ihs, guiCtx) match {
-      case Failure(RestartRequestedFailureReason) => IPWprove(expr, source, thms, ihs, guiCtx)
-      case other =>
-        iwf.save()
-        other
+      case Failure(RestartRequestedFailureReason) => IPWprove(expr, source, thms, ihs, title)
+      case other => other
     }
   }
 }

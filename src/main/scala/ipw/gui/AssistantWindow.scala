@@ -33,7 +33,8 @@ protected[ipw] trait AssistantWindow
 
   new JFXPanel() // force init
 
-  protected[ipw] class Window(protected val stage: Stage, protected val tabAppender: Tab => Unit) { theWindow =>
+  protected[ipw] class Window(protected val stage: Stage, protected val tabAppender: Tab => Unit,
+		  				      val proofDocument: ProofDocument) { theWindow =>
     def openNewTab(title: String, choosingEnd: ChoosingEnd): Future[WindowTab] = {
       val tabPromise = Promise[WindowTab]
 
@@ -146,7 +147,7 @@ protected[ipw] trait AssistantWindow
 
   protected[ipw] case class WindowTab(statusCallback: StatusCallback, window: Window, title: String)
 
-  protected[ipw] def openAssistantWindow(done: Future[Unit]): Future[Window] = {
+  protected[ipw] def openAssistantWindow(done: Future[Unit], doc: ProofDocument): Future[Window] = {
     val windowPromise = Promise[Window]
 
     Platform.runLater {
@@ -183,7 +184,7 @@ protected[ipw] trait AssistantWindow
       }
 
       // "return" a callback to the driver which he can call to update on the status of some proof steps
-      windowPromise.success(new Window(stage, appendTab))
+      windowPromise.success(new Window(stage, appendTab, doc))
       
       // best hack 2k17
       Toolkit.getToolkit.enterNestedEventLoop(stage.delegate) 
