@@ -19,18 +19,18 @@ import scala.concurrent.duration.Duration
 import ipw.io.IWFileInterface
 
 trait AssistedTheory
-    extends Theory
-    with Analysers
-    with PathTreeOps
-    with Suggestions
-    with AssistantWindow
-    with IOs { self: AssistedTheory with IWFileInterface =>
+  extends Theory
+  with Analysers
+  with PathTreeOps
+  with Suggestions
+  with AssistantWindow
+  with IOs { self: AssistedTheory with IWFileInterface =>
 
-  protected[ipw] type ProofState = (Expr, Seq[NamedSuggestion], Map[String, Theorem], Boolean)
-  protected[ipw] type UpdateStep = Suggestion
-  protected[ipw] type ChoosingEnd = SynchronizedChannel.End[ProofState, UpdateStep]
-  protected[ipw] type SuggestingEnd = SynchronizedChannel.End[UpdateStep, ProofState]
-  protected[ipw] type StatusCallback = (Expr, Status) => Unit
+  protected[ipw]type ProofState = (Expr, Seq[NamedSuggestion], Map[String, Theorem], Boolean)
+  protected[ipw]type UpdateStep = Suggestion
+  protected[ipw]type ChoosingEnd = SynchronizedChannel.End[ProofState, UpdateStep]
+  protected[ipw]type SuggestingEnd = SynchronizedChannel.End[UpdateStep, ProofState]
+  protected[ipw]type StatusCallback = (Expr, Status) => Unit
   private type ProofContext = (ProofCase, WindowTab)
 
   protected[ipw] sealed abstract class Status(val stage: Int, val message: String)
@@ -45,7 +45,7 @@ trait AssistedTheory
   private case class Following(ctx: ProofContext) extends GUIContext
 
   private val UndoSuggestion = ("Undo", Undo)
-  
+
   private val RestartRequestedFailureReason = Aborted("RestartRequested")
 
   private def onGUITab[T](ctx: GUIContext)(f: ProofContext => T): T = ctx match {
@@ -64,8 +64,8 @@ trait AssistedTheory
     case Following(ctx) => f(ctx)
   }
 
-  private def IPWproveInner(expr: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses] = Nil, 
-                            guiCtx: GUIContext): Attempt[Theorem] = onGUITab(guiCtx) {
+  private def IPWproveInner(expr: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses] = Nil,
+    guiCtx: GUIContext): Attempt[Theorem] = onGUITab(guiCtx) {
     case (suggestingEnd, tab) =>
 
       val proofAttempts = new LinkedBlockingDeque[Option[(Expr, Theorem)]]
@@ -129,8 +129,8 @@ trait AssistedTheory
       proveForever()
   }
 
-  private def IPWproveTopLevel(expr: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses] = Nil, 
-                               guiCtx: GUIContext): Attempt[Theorem] = expr match {
+  private def IPWproveTopLevel(expr: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses] = Nil,
+    guiCtx: GUIContext): Attempt[Theorem] = expr match {
     case Not(Not(e)) =>
       IPWproveTopLevel(e, thms, ihs, guiCtx)
 
@@ -169,10 +169,10 @@ trait AssistedTheory
           case AssumeHypothesis =>
             implI(hyp) { assumption =>
               val hyps = assumption.expression match {
-                case And(exprs) if promptTheoremSplit(exprs) => andE(assumption).get
-                case _                                       => Seq(assumption)
+                case And(exprs) if suggestingEnd.split(promptTheoremSplit(exprs)) => andE(assumption).get
+                case _ => Seq(assumption)
               }
-              val newThms = hyps map (h => (promptTheoremName(h.expression, "assumption"), h))
+              val newThms = hyps map (h => (suggestingEnd.name(promptTheoremName(h.expression, "assumption")), h))
               IPWproveTopLevel(body, thms ++ newThms, ihs, Following(proofCtx))
             }
 
@@ -183,10 +183,10 @@ trait AssistedTheory
     case _ =>
       IPWproveInner(expr, thms, ihs, guiCtx)
   }
-   
+
   @tailrec
   final def IPWprove(expr: Expr, source: String, thms: Map[String, Theorem],
-               ihs: Seq[StructuralInductionHypotheses] = Nil, title: String = "Proof"): Attempt[Theorem] = {
+    ihs: Seq[StructuralInductionHypotheses] = Nil, title: String = "Proof"): Attempt[Theorem] = {
     val guiCtx = NewWindow(title, readProofDocument(source, expr))
     IPWproveTopLevel(expr, thms, ihs, guiCtx) match {
       case Failure(RestartRequestedFailureReason) => IPWprove(expr, source, thms, ihs, title)

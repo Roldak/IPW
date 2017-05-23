@@ -17,12 +17,9 @@ protected[ipw] trait IWFileInterface { theory: AssistedTheory =>
 }
 
 protected[ipw] trait IOs { theory: AssistedTheory with IWFileInterface =>
-
-  type SerializedChoice = (String)
-
   protected[ipw] final class ProofCase(
     val title: String,
-    val steps: ArrayBuffer[SerializedChoice],
+    val steps: ArrayBuffer[String],
     private val suggestingEnd: SuggestingEnd,
     private val onStopAutoPilot: () => Unit) {
 
@@ -31,12 +28,11 @@ protected[ipw] trait IOs { theory: AssistedTheory with IWFileInterface =>
 
     def read: UpdateStep = {
       val state = writes.dequeue()
-
+      
       if (i < steps.size) { // autopilot
         state._2.find(_._2.toString == steps(i)) match {
           case Some(namedSugg) =>
             i += 1
-            println(i)
             return namedSugg._2
           case _ =>
             steps.trimEnd(steps.size - i)
@@ -53,8 +49,43 @@ protected[ipw] trait IOs { theory: AssistedTheory with IWFileInterface =>
     }
 
     def write(p: ProofState): Unit = {
-      suggestingEnd.write(p)
       writes.enqueue(p)
+      suggestingEnd.write(p)
+    }
+
+    private def parseBool(s: String): Option[Boolean] =
+      if (s == "true") Some(true)
+      else if (s == "false") Some(false)
+      else None
+
+    def split(fallback: => Boolean): Boolean = {
+      if (i < steps.size) {
+        parseBool(steps(i)) match {
+          case Some(b) =>
+            i += 1
+            return b
+          case _ =>
+            steps.trimEnd(steps.size - i)
+            onStopAutoPilot()
+        }
+      }
+
+      val v = fallback
+      steps.append(v.toString)
+      i += 1
+      v
+    }
+
+    def name(fallback: => String): String = {
+      if (i < steps.size) {
+        i += 1
+        steps(i - 1)
+      } else {
+        val v = fallback
+        steps.append(v)
+        i += 1
+        v
+      }
     }
   }
 

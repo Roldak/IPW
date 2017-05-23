@@ -35,10 +35,10 @@ trait JsonIWFiles extends IWFileInterface { theory: AssistedTheory =>
   private class JsonProofDocument(
     private val source: String,
     private val id: ProofIdentifier,
-    private val serializedCases: MutableMap[String, Seq[SerializedChoice]]) extends ProofDocument(source, id) {
-	  
+    private val serializedCases: MutableMap[String, Seq[String]]) extends ProofDocument(source, id) {
+
     import net.liftweb.json.JsonDSL._
-    
+
     private val cases = ArrayBuffer[ProofCase]()
 
     override def getCase(title: String, suggestingEnd: SuggestingEnd, onStopAutopilot: () => Unit): ProofCase = {
@@ -46,10 +46,10 @@ trait JsonIWFiles extends IWFileInterface { theory: AssistedTheory =>
       cases.append(newCase)
       newCase
     }
-    
-    private def renderCase(c: ProofCase): JValue = 
+
+    private def renderCase(c: ProofCase): JValue =
       ("title" -> c.title) ~
-      ("steps" -> c.steps.toList)
+        ("steps" -> c.steps.toList)
 
     override def save(): Unit = {
       println(cases)
@@ -71,6 +71,8 @@ trait JsonIWFiles extends IWFileInterface { theory: AssistedTheory =>
     }
   }
 
+  private def readJStringList(lst: List[JValue]): List[String] = for (JString(str) <- lst) yield str
+  
   override def readProofDocument(source: String, id: ProofIdentifier): ProofDocument = {
     val content = Source.fromFile(source).getLines().mkString
     val json = parse(content)
@@ -84,11 +86,9 @@ trait JsonIWFiles extends IWFileInterface { theory: AssistedTheory =>
       JField("title", JString(title)) <- proofCase
       JField("steps", JArray(steps)) <- proofCase
     } yield {
-      (title, for {
-        JString(stepStr) <- steps
-      } yield stepStr)
+      (title, readJStringList(steps))
     }
-    
+
     new JsonProofDocument(source, id, MutableMap() ++ cases)
   }
 }
