@@ -11,6 +11,13 @@ import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.Queue
 
 protected[ipw] trait IOs { theory: AssistedTheory with IWFileInterface =>
+
+  protected[ipw] abstract class ProofDocument(private val source: String, private val id: ProofIdentifier) {
+    def getCase(title: String, suggestingEnd: SuggestingEnd, onStopAutopilot: () => Unit): ProofCase
+    def save(): Unit
+    def clear(): Unit
+  }
+
   protected[ipw] final class ProofCase(
       val title: String,
       var complete: Boolean,
@@ -37,9 +44,9 @@ protected[ipw] trait IOs { theory: AssistedTheory with IWFileInterface =>
       } else if (!complete) {
         onStopAutoPilot()
       }
-      
+
       i += 1
-      
+
       val sugg = suggestingEnd.read
       sugg match {
         case Abort =>
@@ -93,10 +100,4 @@ protected[ipw] trait IOs { theory: AssistedTheory with IWFileInterface =>
       complete = true
     }
   }
-
-  protected[ipw] abstract class ProofDocument(private val source: String, private val id: ProofIdentifier) {
-    def getCase(title: String, suggestingEnd: SuggestingEnd, onStopAutopilot: () => Unit): ProofCase
-    def save(): Unit
-  }
-
 }

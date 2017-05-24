@@ -32,6 +32,8 @@ protected[ipw] trait AssistantWindow
   Platform.implicitExit = false
 
   new JFXPanel() // force init
+  
+  protected val restartSuggestion = ("Restart", Seq(Restart))
 
   protected[ipw] class Window(protected val stage: Stage, protected val tabAppender: Tab => Unit,
 		  				      val proofDocument: ProofDocument) { theWindow =>
@@ -113,7 +115,7 @@ protected[ipw] trait AssistantWindow
             elemStatus.get(expr) foreach (elem.right = _)
 
             suggestionBuffer.clear()
-            suggestionBuffer ++= suggs.groupBy(_._1).map(s => (s._1, s._2 map (_._2))).toSeq.sortBy(_._1)
+            suggestionBuffer ++= suggs.groupBy(_._1).map(s => (s._1, s._2 map (_._2))).toSeq.sortBy(_._1) :+ restartSuggestion
 
             theoremPane.clear
             thms foreach {

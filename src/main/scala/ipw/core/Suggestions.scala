@@ -32,8 +32,10 @@ protected[ipw] trait Suggestions { theory: AssistedTheory =>
   protected[ipw] case object FixVariable extends Suggestion
   protected[ipw] case object StructuralInduction extends Suggestion
   protected[ipw] case object AssumeHypothesis extends Suggestion
+  
   protected[ipw] case object Abort extends Suggestion
   protected[ipw] case object Undo extends Suggestion
+  protected[ipw] case object Restart extends Suggestion
   
   protected[ipw] type NamedSuggestion = (String, Suggestion)
 }

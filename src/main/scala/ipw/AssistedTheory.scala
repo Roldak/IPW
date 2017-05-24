@@ -19,12 +19,12 @@ import scala.concurrent.duration.Duration
 import ipw.io.IWFileInterface
 
 trait AssistedTheory
-  extends Theory
-  with Analysers
-  with PathTreeOps
-  with Suggestions
-  with AssistantWindow
-  with IOs { self: AssistedTheory with IWFileInterface =>
+    extends Theory
+    with Analysers
+    with PathTreeOps
+    with Suggestions
+    with AssistantWindow
+    with IOs { self: AssistedTheory with IWFileInterface =>
 
   protected[ipw]type ProofState = (Expr, Seq[NamedSuggestion], Map[String, Theorem], Boolean)
   protected[ipw]type UpdateStep = Suggestion
@@ -39,6 +39,11 @@ trait AssistedTheory
   protected[ipw] case object ProofFailed extends Status(2, "Could not conclude.")
   protected[ipw] case object ProofSucceeded extends Status(3, "Success!")
 
+  private sealed abstract class SolveRequest
+  private case class ProveConjecture(conjecture: Expr, using: Theorem) extends SolveRequest
+  private case object StopProving extends SolveRequest
+  private case object RequestRestart extends SolveRequest
+
   sealed abstract class GUIContext
   case class NewWindow(tabTitle: String, proofDoc: ProofDocument) extends GUIContext
   private case class NewTab(title: String, win: Window) extends GUIContext
@@ -48,7 +53,7 @@ trait AssistedTheory
 
   private val RestartRequestedFailureReason = Aborted("RestartRequested")
 
-  private def onGUITab(ctx: GUIContext)(f: ProofContext => Attempt[Theorem]): Attempt[Theorem] = ctx match {
+  private final def onGUITab(ctx: GUIContext)(f: ProofContext => Attempt[Theorem]): Attempt[Theorem] = ctx match {
     case NewWindow(tabTitle, doc) =>
       val willTerminate = Promise[Unit] // them lies tho
       val res = onGUITab(NewTab(tabTitle, Await.result(openAssistantWindow(willTerminate.future, doc), Duration.Inf)))(f)
@@ -61,7 +66,7 @@ trait AssistedTheory
       val tab = window.openNewTab(title, choosingEnd)
       val proofCase = window.proofDocument.getCase(title, suggestingEnd, () => window.show)
       f(proofCase, Await.result(tab, Duration.Inf)) match {
-        case attempt @ Success(_) => 
+        case attempt @ Success(_) =>
           proofCase.setComplete
           attempt
         case other => other
@@ -70,11 +75,10 @@ trait AssistedTheory
     case Following(ctx) => f(ctx)
   }
 
-  private def IPWproveInner(expr: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses] = Nil,
-    guiCtx: GUIContext): Attempt[Theorem] = onGUITab(guiCtx) {
+  private final def IPWproveInner(expr: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses], guiCtx: GUIContext): Attempt[Theorem] = onGUITab(guiCtx) {
     case (suggestingEnd, tab) =>
 
-      val proofAttempts = new LinkedBlockingDeque[Option[(Expr, Theorem)]]
+      val proofAttempts = new LinkedBlockingDeque[SolveRequest]
 
       def updateStatus(e: Expr, status: Status): Unit = {
         tab.statusCallback(e, status)
@@ -82,7 +86,7 @@ trait AssistedTheory
 
       @tailrec
       def deepen(history: List[(Expr, Theorem, Map[String, Theorem])], step: Expr, accumulatedProof: Theorem, thms: Map[String, Theorem], undo: Boolean = false): Unit = {
-        proofAttempts.putFirst(Some((step, accumulatedProof)))
+        proofAttempts.putFirst(ProveConjecture(step, accumulatedProof))
         updateStatus(step, InQueue)
 
         val (suggestions, newThms) = analyse(step, thms, ihs)
@@ -101,7 +105,8 @@ trait AssistedTheory
               println("Cannot undo: history is empty")
               deepen(history, step, accumulatedProof, thms)
           }
-          case Abort =>
+          case Abort   => proofAttempts.putFirst(StopProving)
+          case Restart => proofAttempts.putFirst(RequestRestart)
           case other =>
             println(s"Suggestion $other cannot be used in this context")
             deepen(history, step, accumulatedProof, thms) // try again
@@ -111,7 +116,7 @@ trait AssistedTheory
       @tailrec
       def proveForever(): Attempt[Theorem] = {
         proofAttempts.takeFirst() match {
-          case Some((step, accumulatedProof)) =>
+          case ProveConjecture(step, accumulatedProof) =>
             updateStatus(step, Proving)
             prove(step) match {
               case Success(thm) =>
@@ -123,20 +128,26 @@ trait AssistedTheory
                 proveForever()
             }
 
-          case _ => Attempt.fail(s"Could not prove $expr")
+          case StopProving    => Attempt.fail(s"Could not prove $expr")
+
+          case RequestRestart => Failure(RestartRequestedFailureReason)
         }
       }
 
       async {
         deepen(Nil, expr, truth, thms)
-        proofAttempts.addFirst(None) // abort :'(
       }
 
       proveForever()
   }
 
-  private def IPWproveTopLevel(expr: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses] = Nil,
-    guiCtx: GUIContext): Attempt[Theorem] = expr match {
+  private final def handleMetaSuggestions(s: Suggestion): Attempt[Theorem] = s match {
+    case Abort   => Attempt.fail("Operation aborted")
+    case Restart => Failure(RestartRequestedFailureReason)
+    case other   => throw new IllegalStateException(s"Suggestion ${other} is illegal in this context")
+  }
+
+  private final def IPWproveTopLevel(expr: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses], guiCtx: GUIContext): Attempt[Theorem] = expr match {
     case Not(Not(e)) =>
       IPWproveTopLevel(e, thms, ihs, guiCtx)
 
@@ -161,9 +172,7 @@ trait AssistedTheory
                 IPWproveTopLevel(goal.expression, thms, ihs :+ tihs, NewTab(s"${tab.title} case '${caseId}'", tab.window))
             }
 
-          case Abort => Attempt.fail("Operation aborted")
-
-          case other => throw new IllegalStateException(s"Suggestion ${other} is illegal in this context")
+          case other => handleMetaSuggestions(other)
         }
     }
 
@@ -182,21 +191,31 @@ trait AssistedTheory
               IPWproveTopLevel(body, thms ++ newThms, ihs, Following(proofCtx))
             }
 
-          case other => throw new IllegalStateException(s"Suggestion ${other} is illegal in this context")
+          case other => handleMetaSuggestions(other)
         }
     }
 
-    case _ =>
-      IPWproveInner(expr, thms, ihs, guiCtx)
+    case _ => IPWproveInner(expr, thms, ihs, guiCtx)
   }
 
-  @tailrec
-  final def IPWprove(expr: Expr, source: String, thms: Map[String, Theorem],
-    ihs: Seq[StructuralInductionHypotheses] = Nil, title: String = "Proof"): Attempt[Theorem] = {
-    val guiCtx = NewWindow(title, readProofDocument(source, expr))
-    IPWproveTopLevel(expr, thms, ihs, guiCtx) match {
-      case Failure(RestartRequestedFailureReason) => IPWprove(expr, source, thms, ihs, title)
-      case other => other
+  protected final def isRestartRequest(reason: FailureReason): Boolean = reason match {
+    case r if r == RestartRequestedFailureReason => true
+    case other                                   => other.underlying exists isRestartRequest
+  }
+
+  def IPWprove(expr: Expr, source: String, thms: Map[String, Theorem] = Map.empty,
+               ihs: Seq[StructuralInductionHypotheses] = Nil, title: String = "Proof"): Attempt[Theorem] = {
+    val doc = readProofDocument(source, expr)
+    val guiCtx = NewWindow(title, doc)
+
+    try {
+      IPWproveTopLevel(expr, thms, ihs, guiCtx).get
+    } catch {
+      case ex: AttemptException if isRestartRequest(ex.reason) =>
+        doc.clear()
+        IPWprove(expr, source, thms, ihs, title)
+
+      case ex: AttemptException => Failure(ex.reason)
     }
   }
 }

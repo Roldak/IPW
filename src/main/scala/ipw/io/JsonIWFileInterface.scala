@@ -75,6 +75,11 @@ trait JsonIWFiles extends IWFileInterface { theory: AssistedTheory =>
       writer.write(compact(render(merged)))
       writer.close()
     }
+    
+    override def clear(): Unit = {
+      cases.clear()
+      save()
+    }
   }
 
   private def readJStringList(lst: List[JValue]): List[String] = for (JString(str) <- lst) yield str
