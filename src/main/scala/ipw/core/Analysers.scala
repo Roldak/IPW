@@ -102,6 +102,14 @@ protected[ipw] trait Analysers { theory: AssistedTheory =>
     paths :+ Conclusion(thm, Set.empty, Nil, EndOfPath)
   }
 
+  var analysisTimer: Long = 0
+  private def time[T](f: => T): T = {
+    val t0 = System.nanoTime()
+    val res = f
+    analysisTimer += System.nanoTime() - t0
+    res
+  }
+
   /*
    * Unifies the two patterns, where instantiableVars denotes the set of variables appearing in any of the two patterns that are instantiable.
    */
@@ -172,12 +180,13 @@ protected[ipw] trait Analysers { theory: AssistedTheory =>
   /*
    * Generates a new theorem from a given theorem by following elimination rules given by the path,
    * with the help of a substitution to instantiate foralls.
+   * implE(thm)(goal => {println(s"${goal.expression} VS ${instPrems.head.expression}"); time(goal.by(instPrems.head))})
    */
   private def followPath(thm: Theorem, path: Path, subst: Substitution, instPrems: Seq[Theorem]): Theorem = path match {
     case NotE(next)              => followPath(notE(thm), next, subst, instPrems)
     case AndE(i, next)           => followPath(andE(thm)(i), next, subst, instPrems)
     case ForallE(vals, next)     => followPath(forallE(thm)(subst(vals.head.toVariable), (vals.tail map (v => subst(v.toVariable)): _*)), next, subst, instPrems)
-    case ImplE(assumption, next) => followPath(implE(thm)(_.by(instPrems.head)), next, subst, instPrems.tail)
+    case ImplE(assumption, next) => followPath(implE(thm)(goal => time(goal.by(instPrems.head))), next, subst, instPrems.tail)
     case EndOfPath               => thm
   }
 
@@ -190,6 +199,7 @@ protected[ipw] trait Analysers { theory: AssistedTheory =>
    *  
    * The main mechanism for finding the proofs (and the substitutions) is unification.
    */
+
   private def provePattern(expr: Expr, instantiableVars: Set[Variable], avThms: Seq[Theorem]): Seq[(Substitution, Theorem)] = {
     val deeps = expr match {
       case And(exprs) =>
@@ -197,7 +207,7 @@ protected[ipw] trait Analysers { theory: AssistedTheory =>
 
       case Forall(vals, body) =>
         provePattern(body, instantiableVars, avThms) flatMap (s => forallI(vals)(_ => s._2) map (thm => Seq((s._1, thm))) getOrElse (Nil))
-        
+
       // TODO: support more cases
 
       case _ => Nil
@@ -247,12 +257,12 @@ protected[ipw] trait Analysers { theory: AssistedTheory =>
    * tries to find subexpressions inside expr where some conclusion of thm could be applied.
    */
   private def instantiateConclusion(expr: Expr, thm: Theorem, avThms: Seq[Theorem]): Seq[(Expr, Expr, Theorem)] = {
-    val concls = conclusionsOf(thm.expression) flatMap (_ match {
+    val concls = conclusionsOf(thm.expression) flatMap {
       case concl @ Conclusion(Equals(a, b), vars, premises, path) => Seq(
         (a, (x: Equals) => x.lhs, (x: Equals) => x.rhs, vars, premises, path),
         (b, (x: Equals) => x.rhs, (x: Equals) => x.lhs, vars, premises, path))
       case _ => Nil
-    })
+    }
 
     collectPreorderWithPath { (exp, exPath) =>
       concls flatMap {

@@ -8,7 +8,7 @@ object Main {
   val proofsFile = "test.iwf"
 
   def main(args: Array[String]): Unit = {
-
+    
     val foldlID = FreshIdentifier("foldl")
     val foldrID = FreshIdentifier("foldr")
 
@@ -72,15 +72,15 @@ object Main {
     def isUnit(f: Expr, z: Expr): Expr = forall("x" :: A)(x => f(x, z) === x && f(z, x) === x)
 
     def isMonoid(f: Expr, z: Expr): Expr = and(isAssociative(f), isUnit(f, z))
-/*
+
     val lemma = IPWprove(
       forall("f" :: ((A, A) =>: A), "z" :: A)((f, z) => isMonoid(f, z) ==> forall("l" :: ListA, "x" :: A)((l, x) => foldl(f, x, l) === f(x, foldl(f, z, l)))),
       proofsFile,
       Map.empty)
       
     println(lemma)
-    */
     
+    /*
     val lemma = forallI("f" :: ((A, A) =>: A), "z" :: A) { (f, z) =>
       implI(isMonoid(f, z)) { isMonoid =>
         val Seq(isAssoc, isUnit) = andE(isMonoid): Seq[Theorem]
@@ -136,7 +136,7 @@ object Main {
           proofsFile,
           Map("Lemma" -> lemma, "unity of `f`" -> isUnit, "Associativity of `f`" -> isAssoc))*/
       }
-    }
+    }*/
 
     val theTheorem = IPWprove(
       forall("f" :: ((A, A) =>: A), "z" :: A)((f, z) => isMonoid(f, z) ==> forall("l" :: ListA)(l => foldl(f, z, l) === foldr(f, z, l))),
@@ -144,6 +144,7 @@ object Main {
       Map("lemma" -> lemma))
       
     println(theTheorem)
+    System.exit(0)
   }
 
   def mai(args: Array[String]): Unit = {

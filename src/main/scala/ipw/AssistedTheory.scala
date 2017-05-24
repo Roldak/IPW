@@ -208,6 +208,7 @@ trait AssistedTheory
     val doc = readProofDocument(source, expr)
     val guiCtx = NewWindow(title, doc)
 
+    analysisTimer = 0
     try {
       IPWproveTopLevel(expr, thms, ihs, guiCtx).get
     } catch {
@@ -216,6 +217,8 @@ trait AssistedTheory
         IPWprove(expr, source, thms, ihs, title)
 
       case ex: AttemptException => Failure(ex.reason)
+    } finally {
+      println(analysisTimer + " ns")
     }
   }
 }
