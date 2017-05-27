@@ -16,8 +16,8 @@ import scala.concurrent.Promise
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
-import scala.collection.mutable.{Queue => MutableQueue}
-import scala.collection.mutable.{Set => MutableSet}
+import scala.collection.mutable.{ Queue => MutableQueue }
+import scala.collection.mutable.{ Set => MutableSet }
 import ipw.io.IWFileInterface
 
 trait AssistedTheory
@@ -77,49 +77,53 @@ trait AssistedTheory
 
     case Following(ctx) => f(ctx)
   }
-  
+
   private final def bfs(from: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses], prover: BlockingDeque[SolveRequest], acc: Theorem): Unit = {
     type Element = (Expr, Map[String, Theorem], Suggestion, Theorem)
-    
+
     @tailrec
-    def waitForProver(): Unit = if (prover.size() > 1000) {
-      Thread.sleep(100)
-      println(s"Waiting for prover... (${prover.size()} left to prove)")
-      waitForProver()
-    }
-    
+    def waitForProver(n: Int = -1): Boolean = if (prover.size() == n) {
+      true
+    } else if (prover.size() > 1000) {
+      val size = prover.size()
+      Thread.sleep(1000)
+      println(s"Waiting for prover... (${size} left to prove)")
+      waitForProver(size)
+    } else false
+
     val queue = MutableQueue[Element]()
     val seen = MutableSet[Expr]()
     val (suggestions, newThms) = analyse(from, thms, ihs)
-    
+
     suggestions foreach (s => queue.enqueue((from, newThms, s._2, acc)))
-    
+
     @tailrec
     def process(count: Int, alreadySeen: Int): Unit = {
       val (expr, thms, sugg, acc) = queue.dequeue()
-      
+
       if (count % 100 == 0) {
-        println(s"Processed $count Suggestions (already seen is $alreadySeen and seen is ${seen.size})") 
+        println(s"Processed $count Suggestions (already seen is $alreadySeen and seen is ${seen.size})")
       }
-      
+
       sugg match {
         case RewriteSuggestion(_, RewriteResult(next, proof)) if !seen(next) =>
           seen.add(next)
-          
+
           val newAcc = prove(from === next, acc, proof)
           prover.putLast(ProveConjecture(next, newAcc))
           println(s"Added (${prover.size()}): $next")
-          
+
           val (suggestions, newThms) = analyse(next, thms, ihs)
-          waitForProver()
-          suggestions foreach (s => queue.enqueue((next, newThms, s._2, newAcc)))
           
-          process(count + 1, alreadySeen)
-          
-        case _ => process(count, alreadySeen + 1)
+          if (!waitForProver()) {
+            suggestions foreach (s => queue.enqueue((next, newThms, s._2, newAcc)))
+            process(count + 1, alreadySeen)
+          }
+
+        case _ => process(count + 1, alreadySeen + 1)
       }
     }
-    
+
     process(0, 0)
   }
 
