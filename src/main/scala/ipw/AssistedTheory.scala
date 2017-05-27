@@ -78,7 +78,8 @@ trait AssistedTheory
     case Following(ctx) => f(ctx)
   }
 
-  private final def bfs(from: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses], prover: BlockingDeque[SolveRequest], acc: Theorem): Unit = {
+  private final def bfs(from: Expr, step: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses],
+                        prover: BlockingDeque[SolveRequest], acc: Theorem): Unit = {
     type Element = (Expr, Map[String, Theorem], Suggestion, Theorem)
 
     @tailrec
@@ -93,9 +94,9 @@ trait AssistedTheory
 
     val queue = MutableQueue[Element]()
     val seen = MutableSet[Expr]()
-    val (suggestions, newThms) = analyse(from, thms, ihs)
+    val (suggestions, newThms) = analyse(step, thms, ihs)
 
-    suggestions foreach (s => queue.enqueue((from, newThms, s._2, acc)))
+    suggestions foreach (s => queue.enqueue((step, newThms, s._2, acc)))
 
     @tailrec
     def process(count: Int, alreadySeen: Int): Unit = {
@@ -114,7 +115,7 @@ trait AssistedTheory
           println(s"Added (${prover.size()}): $next")
 
           val (suggestions, newThms) = analyse(next, thms, ihs)
-          
+
           if (!waitForProver()) {
             suggestions foreach (s => queue.enqueue((next, newThms, s._2, newAcc)))
             process(count + 1, alreadySeen)
@@ -159,7 +160,7 @@ trait AssistedTheory
           }
           case Abort   => proofAttempts.putFirst(StopProving)
           case Restart => proofAttempts.putFirst(RequestRestart)
-          case BFS     => bfs(step, thms, ihs, proofAttempts, accumulatedProof)
+          case BFS     => bfs(expr, step, thms, ihs, proofAttempts, accumulatedProof)
           case other =>
             println(s"Suggestion $other cannot be used in this context")
             deepen(history, step, accumulatedProof, thms) // try again
