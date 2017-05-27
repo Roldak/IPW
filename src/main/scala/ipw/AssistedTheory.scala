@@ -16,6 +16,8 @@ import scala.concurrent.Promise
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
+import scala.collection.mutable.{Queue => MutableQueue}
+import scala.collection.mutable.{Set => MutableSet}
 import ipw.io.IWFileInterface
 
 trait AssistedTheory
@@ -50,6 +52,7 @@ trait AssistedTheory
   private case class Following(ctx: ProofContext) extends GUIContext
 
   private val UndoSuggestion = ("Undo", Undo)
+  private val bfsSuggestion = ("Breadth-first Search", BFS)
 
   private val RestartRequestedFailureReason = Aborted("RestartRequested")
 
@@ -74,6 +77,51 @@ trait AssistedTheory
 
     case Following(ctx) => f(ctx)
   }
+  
+  private final def bfs(from: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses], prover: BlockingDeque[SolveRequest], acc: Theorem): Unit = {
+    type Element = (Expr, Map[String, Theorem], Suggestion, Theorem)
+    
+    @tailrec
+    def waitForProver(): Unit = if (prover.size() > 1000) {
+      Thread.sleep(100)
+      println(s"Waiting for prover... (${prover.size()} left to prove)")
+      waitForProver()
+    }
+    
+    val queue = MutableQueue[Element]()
+    val seen = MutableSet[Expr]()
+    val (suggestions, newThms) = analyse(from, thms, ihs)
+    
+    suggestions foreach (s => queue.enqueue((from, newThms, s._2, acc)))
+    
+    @tailrec
+    def process(count: Int, alreadySeen: Int): Unit = {
+      val (expr, thms, sugg, acc) = queue.dequeue()
+      
+      if (count % 100 == 0) {
+        println(s"Processed $count Suggestions (already seen is $alreadySeen and seen is ${seen.size})") 
+      }
+      
+      sugg match {
+        case RewriteSuggestion(_, RewriteResult(next, proof)) if !seen(next) =>
+          seen.add(next)
+          
+          val newAcc = prove(from === next, acc, proof)
+          prover.putLast(ProveConjecture(next, newAcc))
+          println(s"Added (${prover.size()}): $next")
+          
+          val (suggestions, newThms) = analyse(next, thms, ihs)
+          waitForProver()
+          suggestions foreach (s => queue.enqueue((next, newThms, s._2, newAcc)))
+          
+          process(count + 1, alreadySeen)
+          
+        case _ => process(count, alreadySeen + 1)
+      }
+    }
+    
+    process(0, 0)
+  }
 
   private final def IPWproveInner(expr: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses], guiCtx: GUIContext): Attempt[Theorem] = onGUITab(guiCtx) {
     case (suggestingEnd, tab) =>
@@ -90,7 +138,7 @@ trait AssistedTheory
         updateStatus(step, InQueue)
 
         val (suggestions, newThms) = analyse(step, thms, ihs)
-        val extraSuggestions = if (!history.isEmpty) Seq(UndoSuggestion) else Nil
+        val extraSuggestions = (if (!history.isEmpty) Seq(UndoSuggestion) else Nil) :+ bfsSuggestion
 
         suggestingEnd.write((step, suggestions ++ extraSuggestions, newThms, undo))
 
@@ -107,6 +155,7 @@ trait AssistedTheory
           }
           case Abort   => proofAttempts.putFirst(StopProving)
           case Restart => proofAttempts.putFirst(RequestRestart)
+          case BFS     => bfs(step, thms, ihs, proofAttempts, accumulatedProof)
           case other =>
             println(s"Suggestion $other cannot be used in this context")
             deepen(history, step, accumulatedProof, thms) // try again

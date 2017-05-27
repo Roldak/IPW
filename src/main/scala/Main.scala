@@ -73,10 +73,8 @@ object Main {
 
     def isMonoid(f: Expr, z: Expr): Expr = and(isAssociative(f), isUnit(f, z))
 
-    val lemma = IPWprove(
-      forall("f" :: ((A, A) =>: A), "z" :: A)((f, z) => isMonoid(f, z) ==> forall("l" :: ListA, "x" :: A)((l, x) => foldl(f, x, l) === f(x, foldl(f, z, l)))),
-      proofsFile,
-      Map.empty)
+    val lemma = IPWprove(forall("f" :: ((A, A) =>: A), "z" :: A)(
+        (f, z) => isMonoid(f, z) ==> forall("l" :: ListA, "x" :: A)((l, x) => foldl(f, x, l) === f(x, foldl(f, z, l)))), proofsFile)
       
     println(lemma)
     
@@ -138,12 +136,12 @@ object Main {
       }
     }*/
 
-    val theTheorem = IPWprove(
-      forall("f" :: ((A, A) =>: A), "z" :: A)((f, z) => isMonoid(f, z) ==> forall("l" :: ListA)(l => foldl(f, z, l) === foldr(f, z, l))),
-      proofsFile,
-      Map("lemma" -> lemma))
+    val theTheorem = IPWprove(forall("f" :: ((A, A) =>: A), "z" :: A)(
+        (f, z) => isMonoid(f, z) ==> forall("l" :: ListA)(l => foldl(f, z, l) === foldr(f, z, l))), proofsFile, 
+        Map("lemma" -> lemma))
       
     println(theTheorem)
+    
     System.exit(0)
   }
 

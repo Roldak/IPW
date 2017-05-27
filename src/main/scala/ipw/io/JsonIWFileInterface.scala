@@ -15,14 +15,17 @@ import scala.collection.mutable.ArrayBuffer
  * {
  * 	proofs: [
  * 		{
- * 			expression: "(A && B) => (B && A)"
- * 			theorems: [
- * 				"P(x)",
- * 				"Vx. f(x) < 42"
- * 			],
- * 			content: [
- * 				"FixVariable",
- * 				"Assume",
+ * 			expression: "(A && B) => (B && A)",
+ * 			cases: [
+ * 				{
+ * 					title: "main case",
+ * 					complete: true
+ * 					steps: [
+ * 						"FixVariable",
+ * 						"Assume",
+ * 						...
+ * 					]
+ * 				},
  * 				...
  * 			]
  * 		},
