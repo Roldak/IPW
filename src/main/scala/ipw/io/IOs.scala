@@ -20,8 +20,8 @@ protected[ipw] trait IOs { theory: AssistedTheory with IWFileInterface =>
 
   protected[ipw] final class ProofCase(
       val title: String,
-      var complete: Boolean,
       val steps: ArrayBuffer[String],
+      private var complete: Boolean,
       private val suggestingEnd: SuggestingEnd,
       private val onStopAutoPilot: () => Unit) {
 
@@ -99,5 +99,7 @@ protected[ipw] trait IOs { theory: AssistedTheory with IWFileInterface =>
     def setComplete: Unit = {
       complete = true
     }
+    
+    def isComplete: Boolean = complete
   }
 }

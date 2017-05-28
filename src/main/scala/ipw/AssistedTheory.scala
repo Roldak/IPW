@@ -15,6 +15,7 @@ import java.util.concurrent.LinkedBlockingDeque
 import scala.concurrent.Promise
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Await
+import scala.concurrent.Future
 import scala.concurrent.duration.Duration
 import scala.collection.mutable.{ Queue => MutableQueue }
 import scala.collection.mutable.{ Set => MutableSet }
@@ -33,7 +34,7 @@ trait AssistedTheory
   protected[ipw]type ChoosingEnd = SynchronizedChannel.End[ProofState, UpdateStep]
   protected[ipw]type SuggestingEnd = SynchronizedChannel.End[UpdateStep, ProofState]
   protected[ipw]type StatusCallback = (Expr, Status) => Unit
-  private type ProofContext = (ProofCase, WindowTab)
+  private type ProofContext = (ProofCase, WindowTab, Future[Unit])
 
   protected[ipw] sealed abstract class Status(val stage: Int, val message: String)
   protected[ipw] case object InQueue extends Status(0, "In queue")
@@ -52,7 +53,7 @@ trait AssistedTheory
   private case class Following(ctx: ProofContext) extends GUIContext
 
   private val UndoSuggestion = ("Undo", Undo)
-  private val bfsSuggestion = ("Breadth-first Search", BFS)
+  private val BFSSuggestion = ("Breadth-first Search", BFS)
 
   private val RestartRequestedFailureReason = Aborted("RestartRequested")
 
@@ -67,30 +68,30 @@ trait AssistedTheory
     case NewTab(title, window) =>
       val (choosingEnd, suggestingEnd) = SynchronizedChannel[ProofState, UpdateStep]()
       val tab = window.openNewTab(title, choosingEnd)
+      val willTerminate = Promise[Unit]
       val proofCase = window.proofDocument.getCase(title, suggestingEnd, () => window.show)
-      f(proofCase, Await.result(tab, Duration.Inf)) match {
+      val res = f(proofCase, Await.result(tab, Duration.Inf), willTerminate.future) match {
         case attempt @ Success(_) =>
           proofCase.setComplete
           attempt
         case other => other
       }
+      willTerminate.success(())
+      res
 
     case Following(ctx) => f(ctx)
   }
 
-  private final def bfs(from: Expr, step: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses],
-                        prover: BlockingDeque[SolveRequest], acc: Theorem): Unit = {
+  private final def proveBFS(from: Expr, step: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses],
+                        prover: BlockingDeque[SolveRequest], acc: Theorem, willTerminate: Future[Unit]): Unit = {
     type Element = (Expr, Map[String, Theorem], Suggestion, Theorem)
 
     @tailrec
-    def waitForProver(n: Int = -1): Boolean = if (prover.size() == n) {
-      true
-    } else if (prover.size() > 1000) {
-      val size = prover.size()
+    def waitForProver(n: Int = -1): Unit = if (prover.size() > 1000) {
       Thread.sleep(1000)
-      println(s"Waiting for prover... (${size} left to prove)")
-      waitForProver(size)
-    } else false
+      println(s"Waiting for prover... (${prover.size()} left to prove)")
+      waitForProver()
+    }
 
     val queue = MutableQueue[Element]()
     val seen = MutableSet[Expr]()
@@ -115,8 +116,10 @@ trait AssistedTheory
           println(s"Added (${prover.size()}): $next")
 
           val (suggestions, newThms) = analyse(next, thms, ihs)
-
-          if (!waitForProver()) {
+          
+          waitForProver()
+          
+          if (!willTerminate.isCompleted) {
             suggestions foreach (s => queue.enqueue((next, newThms, s._2, newAcc)))
             process(count + 1, alreadySeen)
           }
@@ -129,7 +132,7 @@ trait AssistedTheory
   }
 
   private final def IPWproveInner(expr: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses], guiCtx: GUIContext): Attempt[Theorem] = onGUITab(guiCtx) {
-    case (suggestingEnd, tab) =>
+    case (suggestingEnd, tab, willTerminate) =>
 
       val proofAttempts = new LinkedBlockingDeque[SolveRequest]
 
@@ -143,7 +146,7 @@ trait AssistedTheory
         updateStatus(step, InQueue)
 
         val (suggestions, newThms) = analyse(step, thms, ihs)
-        val extraSuggestions = (if (!history.isEmpty) Seq(UndoSuggestion) else Nil) :+ bfsSuggestion
+        val extraSuggestions = (if (!history.isEmpty) Seq(UndoSuggestion) else Nil) :+ BFSSuggestion
 
         suggestingEnd.write((step, suggestions ++ extraSuggestions, newThms, undo))
 
@@ -160,7 +163,7 @@ trait AssistedTheory
           }
           case Abort   => proofAttempts.putFirst(StopProving)
           case Restart => proofAttempts.putFirst(RequestRestart)
-          case BFS     => bfs(expr, step, thms, ihs, proofAttempts, accumulatedProof)
+          case BFS     => proveBFS(expr, step, thms, ihs, proofAttempts, accumulatedProof, willTerminate)
           case other =>
             println(s"Suggestion $other cannot be used in this context")
             deepen(history, step, accumulatedProof, thms) // try again
@@ -206,12 +209,12 @@ trait AssistedTheory
       IPWproveTopLevel(e, thms, ihs, guiCtx)
 
     case And(exprs) => onGUITab(guiCtx) {
-      case (_, tab) =>
+      case (_, tab, _) =>
         andI(exprs.zipWithIndex map { case (e, i) => IPWproveTopLevel(e, thms, ihs, NewTab(s"${tab.title}[$i]", tab.window)).get })
     }
 
     case Forall(v :: vals, body) => onGUITab(guiCtx) {
-      case proofCtx @ (suggestingEnd, tab) =>
+      case proofCtx @ (suggestingEnd, tab, _) =>
         val suggs = analyseForall(v, body)
         suggestingEnd.write((expr, suggs, thms, false))
 
@@ -231,7 +234,7 @@ trait AssistedTheory
     }
 
     case Implies(hyp, body) => onGUITab(guiCtx) {
-      case proofCtx @ (suggestingEnd, tab) =>
+      case proofCtx @ (suggestingEnd, tab, _) =>
         suggestingEnd.write((expr, Seq((s"Assume '${prettyPrint(hyp, PrinterOptions())}'", AssumeHypothesis)), thms, false))
 
         suggestingEnd.read match {

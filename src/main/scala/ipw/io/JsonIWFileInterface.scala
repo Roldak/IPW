@@ -47,15 +47,15 @@ trait JsonIWFiles extends IWFileInterface { theory: AssistedTheory =>
     override def getCase(title: String, suggestingEnd: SuggestingEnd, onStopAutopilot: () => Unit): ProofCase = {
       val newCase = serializedCases.get(title) map {
         case (complete, steps) =>
-          new ProofCase(title, complete, ArrayBuffer() ++ steps, suggestingEnd, onStopAutopilot)
-      } getOrElse (new ProofCase(title, false, ArrayBuffer(), suggestingEnd, onStopAutopilot))
+          new ProofCase(title, ArrayBuffer() ++ steps, complete, suggestingEnd, onStopAutopilot)
+      } getOrElse (new ProofCase(title, ArrayBuffer(), false, suggestingEnd, onStopAutopilot))
       cases.append(newCase)
       newCase
     }
 
     private def renderCase(c: ProofCase): JValue =
       ("title" -> c.title) ~
-        ("complete" -> c.complete) ~
+        ("complete" -> c.isComplete) ~
         ("steps" -> c.steps.toList)
 
     override def save(): Unit = {
