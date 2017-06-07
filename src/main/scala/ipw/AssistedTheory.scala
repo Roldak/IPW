@@ -83,13 +83,13 @@ trait AssistedTheory
   }
 
   private final def proveBFS(from: Expr, step: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses],
-                        prover: BlockingDeque[SolveRequest], acc: Theorem, willTerminate: Future[Unit]): Unit = {
+                             prover: BlockingDeque[SolveRequest], acc: Theorem, willTerminate: Future[Unit]): Unit = {
     type Element = (Expr, Map[String, Theorem], Suggestion, Theorem)
 
     @tailrec
     def waitForProver(n: Int = -1): Unit = if (prover.size() > 1000) {
-      Thread.sleep(1000)
       println(s"Waiting for prover... (${prover.size()} left to prove)")
+      Thread.sleep(1000)
       waitForProver()
     }
 
@@ -116,9 +116,9 @@ trait AssistedTheory
           println(s"Added (${prover.size()}): $next")
 
           val (suggestions, newThms) = analyse(next, thms, ihs)
-          
+
           waitForProver()
-          
+
           if (!willTerminate.isCompleted) {
             suggestions foreach (s => queue.enqueue((next, newThms, s._2, newAcc)))
             process(count + 1, alreadySeen)

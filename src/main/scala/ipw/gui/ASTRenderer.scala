@@ -38,11 +38,11 @@ protected[gui] trait Rendering { window: AssistantWindow =>
     class Node(text: String)(implicit ctx: FlowContext) extends Text(text) { self =>
       val renderer = ctx.renderer
 
-      var expression: Expr = null
-      var neighbors: Seq[Node] = null
+      private var _expression: Expr = null
+      private var _neighbors: Seq[Node] = null
 
-      private var finalized = false
-      private var resetState: () => Unit = null
+      private var _finalized = false
+      private var _resetState: () => Unit = null
 
       def withFont(f: Font) = {
         font = f
@@ -57,10 +57,10 @@ protected[gui] trait Rendering { window: AssistantWindow =>
         this
       }
 
-      def finalize(exp: Expr, neighborz: Seq[Node]) = {
-        expression = exp
-        neighbors = neighborz
-        resetState = new Function0[Unit] {
+      def finalize(exp: Expr, neighbors: Seq[Node]) = {
+        _expression = exp
+        _neighbors = neighbors
+        _resetState = new Function0[Unit] {
           val font = self.font.value
           val fill = self.fill.value
           val style = self.style.value
@@ -75,12 +75,14 @@ protected[gui] trait Rendering { window: AssistantWindow =>
             self.cursor = cursor
           }
         }
-        finalized = true
+        _finalized = true
       }
 
-      def isFinalized = finalized
+      def expression = _expression
+      def neighbors = _neighbors
+      def finalized = _finalized
 
-      def reset: Unit = resetState()
+      def reset: Unit = _resetState()
 
       onMouseEntered = handle {
         renderer.pane.getMode.onMouseEnteredNode(this)
@@ -191,7 +193,7 @@ protected[gui] trait Rendering { window: AssistantWindow =>
 
   protected def buildFlow(e: Expr)(implicit ctx: FlowContext): Seq[Code.Node] = {
     val nodes = buildFlowImpl(e)(ctx withParent e)
-    nodes filter { !_.isFinalized } foreach { _.finalize(e, nodes) }
+    nodes filter { !_.finalized } foreach { _.finalize(e, nodes) }
     nodes
   }
 

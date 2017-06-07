@@ -179,7 +179,7 @@ protected[ipw] trait Analysers { theory: AssistedTheory =>
 
   /*
    * Generates a new theorem from a given theorem by following elimination rules given by the path,
-   * with the help of a substitution to instantiate foralls.
+   * with the help of a substitution to instantiate foralls and of proofs to instantiate the premises.
    * implE(thm)(goal => {println(s"${goal.expression} VS ${instPrems.head.expression}"); time(goal.by(instPrems.head))})
    */
   private def followPath(thm: Theorem, path: Path, subst: Substitution, instPrems: Seq[Theorem]): Theorem = path match {
@@ -284,7 +284,9 @@ protected[ipw] trait Analysers { theory: AssistedTheory =>
   private def findTheoremApplications(expr: Expr, thms: Map[String, Theorem]): Seq[NamedSuggestion] = {
     thms.toSeq flatMap {
       case (name, thm) =>
-        instantiateConclusion(expr, thm, thms.values.toSeq) map { case (subj, res, proof) => (s"Apply theorem $name", RewriteSuggestion(subj, RewriteResult(res, proof))) }
+        instantiateConclusion(expr, thm, thms.values.toSeq) map {
+          case (subj, res, proof) => (s"Apply theorem $name", RewriteSuggestion(subj, RewriteResult(res, proof)))
+        }
     }
   }
 
