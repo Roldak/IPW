@@ -3,7 +3,7 @@ Interactive Proof Assistant for [Welder](https://github.com/epfl-lara/welder), t
 
 ## Usage
 
-Compilation should be straightforward except that both Welder and Inox should be published locally.
+Compilation should be straightforward except that Welder will probably need to be published locally.
 
 Once compilation is successful, you can play with the `Main.scala` at the root of the source folder.
 
