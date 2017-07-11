@@ -73,6 +73,26 @@ object Main {
 
     def isMonoid(f: Expr, z: Expr): Expr = and(isAssociative(f), isUnit(f, z))
 
+    {
+      import AST._
+      
+      val f = "f" :: ((A, A) =>: A)
+      val proof = ForallI(f, 
+          ImplI("h", isAssociative(f.toVariable), 
+            Let("x", Fact("h"), 
+              AndE(AndI(List(Fact("h"), Fact("x"))), List("a", "b"),
+                Fact("a")
+              )
+            )
+          )
+        )
+      println(synthesize(proof))
+      println(eval(proof))
+    
+    }
+    
+    System.exit(0)
+    
     val lemma = IPWprove(forall("f" :: ((A, A) =>: A), "z" :: A)(
         (f, z) => isMonoid(f, z) ==> forall("l" :: ListA, "x" :: A)((l, x) => foldl(f, x, l) === f(x, foldl(f, z, l)))), proofsFile)
       
@@ -141,8 +161,6 @@ object Main {
         Map("lemma" -> lemma))
       
     println(theTheorem)
-    
-    System.exit(0)
   }
 
   def mai(args: Array[String]): Unit = {

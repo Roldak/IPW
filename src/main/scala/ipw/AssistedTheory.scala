@@ -10,6 +10,7 @@ import ipw.core._
 import ipw.concurrent.SynchronizedChannel
 import ipw.concurrent.Utils._
 import ipw.io._
+import ipw.ast._
 import java.util.concurrent.BlockingDeque
 import java.util.concurrent.LinkedBlockingDeque
 import scala.concurrent.Promise
@@ -27,7 +28,8 @@ trait AssistedTheory
     with PathTreeOps
     with Suggestions
     with AssistantWindow
-    with IOs { self: AssistedTheory with IWFileInterface =>
+    with IOs 
+    with ProofTrees { self: AssistedTheory with IWFileInterface =>
 
   protected[ipw]type ProofState = (Expr, Seq[NamedSuggestion], Map[String, Theorem], Boolean)
   protected[ipw]type UpdateStep = Suggestion
