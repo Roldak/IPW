@@ -77,38 +77,56 @@ object Main {
       import AST._
       
       val f = "f" :: ((A, A) =>: A)
-      val proof = ForallI(f, 
-          ImplI("h", isAssociative(f.toVariable), 
-            Let("x", Fact("h"), 
-              AndE(AndI(List(Fact("h"), Fact("x"))), List("a", "b"),
-                Fact("a")
+      val z = "z" :: A
+      val x = "x" :: A
+      val l = "l" :: ListA
+      
+      val fv = f.toVariable
+      val zv = z.toVariable
+      val xv = x.toVariable
+      val lv = l.toVariable
+      
+      val proof = ForallI(f,
+        ForallI(z,
+          ImplI("isMonoid", isMonoid(fv, zv),
+            LetAndE(Fact("isMonoid"), List("isAssoc", "isUnit"),
+              StructuralInduction(l, forall(x) {xv => foldl(fv, xv, lv) === fv(xv, foldl(fv, zv, lv))},
+                List(
+                  Case("Cons", List("h", "t"),
+                    ForallI(x, Fact("isAssoc"))
+                  ),
+                  Case("Nil", Nil, Fact("isUnit"))
+                )
               )
             )
           )
         )
+      )
+        
       println(synthesize(proof))
       println(eval(proof))
     
     }
     
-    System.exit(0)
+    /*System.exit(0)
     
     val lemma = IPWprove(forall("f" :: ((A, A) =>: A), "z" :: A)(
         (f, z) => isMonoid(f, z) ==> forall("l" :: ListA, "x" :: A)((l, x) => foldl(f, x, l) === f(x, foldl(f, z, l)))), proofsFile)
       
     println(lemma)
-    
+	*/
     /*
-    val lemma = forallI("f" :: ((A, A) =>: A), "z" :: A) { (f, z) =>
+    val theorem = forallI("f" :: ((A, A) =>: A), "z" :: A) { (f, z) =>
       implI(isMonoid(f, z)) { isMonoid =>
         val Seq(isAssoc, isUnit) = andE(isMonoid): Seq[Theorem]
         
-        structuralInduction((l: Expr) => forall("x" :: A) {
+        val lemma = structuralInduction((l: Expr) => forall("x" :: A) {
           x => foldl(f, x, l) === f(x, foldl(f, z, l))
         }, "l" :: ListA) {
           case (ihs, goal) =>
             ihs.expression match {
               case C(`cons`, h, t) =>
+                println("HTD : ", h, t, ihs.expression)
                 forallI("x" :: A) { x =>
                   foldl(f, x, ihs.expression) ==|
                     trivial |
@@ -128,7 +146,7 @@ object Main {
               case C(`nil`) => isUnit
             }
         }
-        /*
+        
         structuralInduction((l: Expr) => foldl(f, z, l) === foldr(f, z, l), "l" :: ListA) {
           case (ihs, goal) =>
             ihs.expression match {
@@ -147,7 +165,7 @@ object Main {
 
               case C(`nil`) => trivial
             }
-        }*/
+        }
 /*
         IPWprove(
           forall("l" :: ListA)(l => foldl(f, z, l) === foldr(f, z, l)),
@@ -156,11 +174,11 @@ object Main {
       }
     }*/
 
-    val theTheorem = IPWprove(forall("f" :: ((A, A) =>: A), "z" :: A)(
+    /*val theTheorem = IPWprove(forall("f" :: ((A, A) =>: A), "z" :: A)(
         (f, z) => isMonoid(f, z) ==> forall("l" :: ListA)(l => foldl(f, z, l) === foldr(f, z, l))), proofsFile, 
         Map("lemma" -> lemma))
       
-    println(theTheorem)
+    println(theTheorem)*/
   }
 
   def mai(args: Array[String]): Unit = {

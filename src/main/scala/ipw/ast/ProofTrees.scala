@@ -17,13 +17,19 @@ trait ProofTrees { self: AssistedTheory =>
     case class AndI(trees: Seq[Proof]) extends Proof
 
     // Elim rules
-    case class AndE(tree: Proof, ids: List[String], body: Proof) extends Proof
+    case class ForallE(tree: Proof, expr: Expr) extends Proof
+    case class LetAndE(tree: Proof, ids: List[String], body: Proof) extends Proof
+    case class ImplE(tree: Proof, proof: Proof) extends Proof
 
     // Induction
+    
+    case class Case(id: String, fields: Seq[String], body: Proof)
+    case class StructuralInduction(v: ValDef, prop: Expr, cases: Seq[Case]) extends Proof
 
     // Others
     case class Fact(id: String) extends Proof
     case class Let(id: String, value: Proof, in: Proof) extends Proof
+    case class Prove(expr: Expr, facts: Seq[Proof] = Nil) extends Proof
 
     def eval(proof: Proof): Attempt[Theorem] = {
       def findKey[T](map: Map[String, T], key: String): Attempt[T] = map get key match {
@@ -31,12 +37,12 @@ trait ProofTrees { self: AssistedTheory =>
         case _ => Attempt.fail("not found")
       }
 
-      case class Context(vals: Map[String, Variable], facts: Map[String, Theorem], ihss: Map[String, StructuralInductionHypotheses]) {
-        def withVar(id: String, v: Variable) = Context(vals + (id -> v), facts, ihss)
-        def withFact(id: String, thm: Theorem) = Context(vals, facts + (id -> thm), ihss)
-        def withIhs(id: String, ihs: StructuralInductionHypotheses) = Context(vals, facts, ihss + (id -> ihs))
+      case class Context(vars: Map[String, Expr], facts: Map[String, Theorem], ihss: Map[String, StructuralInductionHypotheses]) {
+        def withVar(id: String, v: Expr) = Context(vars + (id -> v), facts, ihss)
+        def withFact(id: String, thm: Theorem) = Context(vars, facts + (id -> thm), ihss)
+        def withIhs(id: String, ihs: StructuralInductionHypotheses) = Context(vars, facts, ihss + (id -> ihs))
 
-        def variable(id: String): Attempt[Variable] = findKey(vals, id)
+        def variable(id: String): Attempt[Expr] = findKey(vars, id)
         def fact(id: String): Attempt[Theorem] = findKey(facts, id)
         def ihs(id: String): Attempt[StructuralInductionHypotheses] = findKey(ihss, id)
       }
@@ -46,11 +52,22 @@ trait ProofTrees { self: AssistedTheory =>
         case ImplI(id, hyp, body) => implI(hyp)(h => rec(body)(ctx withFact (id, h)))
         case AndI(trees) => Attempt.all(trees map rec) flatMap (andI(_))
 
-        case AndE(tree, ids, body) => rec(tree) flatMap (andE(_)) flatMap (thms =>
+        case ForallE(tree, expr) => rec(tree) flatMap (forallE(_)(expr)) 
+        case LetAndE(tree, ids, body) => rec(tree) flatMap andE flatMap (thms =>
           rec(body)((ids zip thms).foldLeft(ctx)((ctx, keyval) => ctx withFact (keyval._1, keyval._2))))
-
+        case ImplE(tree, proof) => rec(tree) flatMap (implE(_)(goal => rec(proof) flatMap (goal.by(_))))
+          
+        case StructuralInduction(v, prop, cases) => structuralInduction(_ => prop, v) { case (ihs, goal) => 
+          val Some((caseId, exprs)) = C.unapplySeq(ihs.expression)
+          cases.find(_.id == caseId.name) match {
+            case Some(c) => rec(c.body)((c.fields zip exprs).foldLeft(ctx)((ctx, keyval) => ctx withVar (keyval._1, keyval._2)))
+            case _ => Attempt.fail(s"Incomplete structural induction (no case for ${caseId})")
+          }
+        }
+        
         case Fact(id) => ctx fact id
         case Let(id, v, in) => rec(v) flatMap (v => rec(in)(ctx withFact (id, v)))
+        case Prove(expr, lemmas) => Attempt.all(lemmas map rec) flatMap (prove(expr, _))
       }
 
       rec(proof)(Context(Map.empty, Map.empty, Map.empty))
@@ -66,25 +83,42 @@ trait ProofTrees { self: AssistedTheory =>
         case _ => e.toString
       }
 
+      def synthCase(c: Case): String = {
+        val fieldstr = if (c.fields.size > 0) ", " + (c.fields mkString(", ")) else ""
+        s"""case C(`${c.id}`${fieldstr}) => ${rec(c.body)}"""
+      }
+      
       def rec(proof: Proof): String = proof match {
         case ForallI(v, body) =>
-          s"""forallI(${synthValDef(v)})(${v.id.name} => {
+          s"""forallI(${synthValDef(v)}) { ${v.id.name} => 
             ${rec(body)}
-          })"""
+          }"""
 
         case ImplI(id, hyp, body) =>
-          s"""implI(${synthExpr(hyp)})($id => {
+          s"""implI(${synthExpr(hyp)}) { $id =>
 	        ${rec(body)}
-	      })"""
+	      }"""
 
         case AndI(trees) => s"""andI(${trees map rec mkString ", "})"""
 
-        case AndE(tree, ids, body) =>
+        case ForallE(tree, expr) => s"""forallE(${rec(tree)})(${synthExpr(expr)})"""
+        
+        case LetAndE(tree, ids, body) =>
           s"""{
             val Seq(${ids mkString ", "}) = andE(${rec(tree)}) : Seq[Theorem]
             ${rec(body)}
           }"""
+            
+        case ImplE(tree, proof) => s"""implE(${rec(tree)})(_.by(${rec(proof)}))"""
 
+        case StructuralInduction(v, prop, cases) =>
+          val casestr = (cases map synthCase) mkString ("\n")
+          s"""structuralInduction((${v.id.name}: Expr) => ${synthExpr(prop)}, ${synthValDef(v)}) { case (ihs, goal) =>
+            ihs.expression match {
+          	${casestr}
+            }
+          }"""
+        
         case Fact(id) => id
 
         case Let(id, v, in) =>
@@ -92,6 +126,10 @@ trait ProofTrees { self: AssistedTheory =>
 	        val $id = ${rec(v)}
 	        ${rec(in)}
 	      }"""
+	        
+        case Prove(expr, lemmas) =>
+          val lemstr = if (lemmas.size > 0) ", " + ((lemmas map rec) mkString(", ")) else ""
+          s"""prove(${synthExpr(expr) + lemstr})"""
       }
 
       rec(proof)
