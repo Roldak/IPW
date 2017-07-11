@@ -80,20 +80,27 @@ object Main {
       val z = "z" :: A
       val x = "x" :: A
       val l = "l" :: ListA
+      val h = "h" :: A
+      val t = "t" :: ListA
       
       val fv = f.toVariable
       val zv = z.toVariable
       val xv = x.toVariable
       val lv = l.toVariable
+      val hv = h.toVariable
+      val tv = t.toVariable
       
       val proof = ForallI(f,
         ForallI(z,
           ImplI("isMonoid", isMonoid(fv, zv),
             LetAndE(Fact("isMonoid"), List("isAssoc", "isUnit"),
-              StructuralInduction(l, forall(x) {xv => foldl(fv, xv, lv) === fv(xv, foldl(fv, zv, lv))},
+              StructuralInduction(l, forall(x) {xv => foldl(fv, xv, lv) === fv(xv, foldl(fv, zv, lv))}, "ihs",
                 List(
-                  Case("Cons", List("h", "t"),
-                    ForallI(x, Fact("isAssoc"))
+                  Case("Cons", List(h, t),
+                    ForallI(x, 
+                      EqNode(foldl(fv, fv(xv, hv), tv), ForallE(HypothesisApplication("ihs", tv), fv(xv, hv)),
+                      EqLeaf(fv(fv(xv, hv), foldl(fv, zv, tv))))
+                    )
                   ),
                   Case("Nil", Nil, Fact("isUnit"))
                 )
@@ -102,20 +109,20 @@ object Main {
           )
         )
       )
-        
+
       println(synthesize(proof))
       println(eval(proof))
     
     }
     
-    /*System.exit(0)
+    System.exit(0)
     
-    val lemma = IPWprove(forall("f" :: ((A, A) =>: A), "z" :: A)(
+    /*val lemma = IPWprove(forall("f" :: ((A, A) =>: A), "z" :: A)(
         (f, z) => isMonoid(f, z) ==> forall("l" :: ListA, "x" :: A)((l, x) => foldl(f, x, l) === f(x, foldl(f, z, l)))), proofsFile)
       
     println(lemma)
 	*/
-    /*
+    
     val theorem = forallI("f" :: ((A, A) =>: A), "z" :: A) { (f, z) =>
       implI(isMonoid(f, z)) { isMonoid =>
         val Seq(isAssoc, isUnit) = andE(isMonoid): Seq[Theorem]
@@ -172,7 +179,7 @@ object Main {
           proofsFile,
           Map("Lemma" -> lemma, "unity of `f`" -> isUnit, "Associativity of `f`" -> isAssoc))*/
       }
-    }*/
+    }
 
     /*val theTheorem = IPWprove(forall("f" :: ((A, A) =>: A), "z" :: A)(
         (f, z) => isMonoid(f, z) ==> forall("l" :: ListA)(l => foldl(f, z, l) === foldr(f, z, l))), proofsFile, 

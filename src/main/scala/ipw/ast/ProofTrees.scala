@@ -23,19 +23,35 @@ trait ProofTrees { self: AssistedTheory =>
 
     // Induction
     
-    case class Case(id: String, fields: Seq[String], body: Proof)
-    case class StructuralInduction(v: ValDef, prop: Expr, cases: Seq[Case]) extends Proof
+    case class Case(id: String, fields: Seq[ValDef], body: Proof)
+    case class StructuralInduction(v: ValDef, prop: Expr, ihs: String, cases: Seq[Case]) extends Proof
+    case class HypothesisApplication(ihs: String, expr: Expr) extends Proof
 
     // Others
     case class Fact(id: String) extends Proof
     case class Let(id: String, value: Proof, in: Proof) extends Proof
     case class Prove(expr: Expr, facts: Seq[Proof] = Nil) extends Proof
+    
+    // Chains
+    sealed abstract class EqChain extends Proof
+    case class EqNode(expr: Expr, jst: Proof, next: EqChain) extends EqChain
+    case class EqLeaf(expr: Expr) extends EqChain
 
     def eval(proof: Proof): Attempt[Theorem] = {
       def findKey[T](map: Map[String, T], key: String): Attempt[T] = map get key match {
         case Some(v) => Success(v)
         case _ => Attempt.fail("not found")
       }
+      
+      def evalEqChain(node: EqNode)(implicit ctx: Context): (Attempt[Theorem], Expr) = node.next match {
+        case next: EqNode => 
+          val localthm = prove(node.expr === next.expr, rec(node.jst))
+          val (restthm, last) = evalEqChain(next)
+          (prove(node.expr === last, restthm, rec(node.jst)), last)
+          
+        case EqLeaf(last) => 
+          (prove(node.expr === last, rec(node.jst)), last)
+      } 
 
       case class Context(vars: Map[String, Expr], facts: Map[String, Theorem], ihss: Map[String, StructuralInductionHypotheses]) {
         def withVar(id: String, v: Expr) = Context(vars + (id -> v), facts, ihss)
@@ -57,17 +73,22 @@ trait ProofTrees { self: AssistedTheory =>
           rec(body)((ids zip thms).foldLeft(ctx)((ctx, keyval) => ctx withFact (keyval._1, keyval._2))))
         case ImplE(tree, proof) => rec(tree) flatMap (implE(_)(goal => rec(proof) flatMap (goal.by(_))))
           
-        case StructuralInduction(v, prop, cases) => structuralInduction(_ => prop, v) { case (ihs, goal) => 
+        case StructuralInduction(v, prop, ihsid, cases) => structuralInduction(_ => prop, v) { case (ihs, goal) => 
           val Some((caseId, exprs)) = C.unapplySeq(ihs.expression)
           cases.find(_.id == caseId.name) match {
-            case Some(c) => rec(c.body)((c.fields zip exprs).foldLeft(ctx)((ctx, keyval) => ctx withVar (keyval._1, keyval._2)))
+            case Some(c) => rec(c.body)((c.fields zip exprs)
+                .foldLeft(ctx withIhs (ihsid, ihs))((ctx, keyval) => ctx withVar (keyval._1.id.name, keyval._2)))
             case _ => Attempt.fail(s"Incomplete structural induction (no case for ${caseId})")
           }
         }
+        case HypothesisApplication(ihsid, expr) => ctx ihs ihsid hypothesis(expr) 
         
         case Fact(id) => ctx fact id
         case Let(id, v, in) => rec(v) flatMap (v => rec(in)(ctx withFact (id, v)))
         case Prove(expr, lemmas) => Attempt.all(lemmas map rec) flatMap (prove(expr, _))
+        
+        case n: EqNode => evalEqChain(n)._1
+        case EqLeaf(expr) => Attempt.fail("Invalid equality chain")
       }
 
       rec(proof)(Context(Map.empty, Map.empty, Map.empty))
@@ -84,7 +105,7 @@ trait ProofTrees { self: AssistedTheory =>
       }
 
       def synthCase(c: Case): String = {
-        val fieldstr = if (c.fields.size > 0) ", " + (c.fields mkString(", ")) else ""
+        val fieldstr = if (c.fields.size > 0) ", " + (c.fields map (_.id.name) mkString(", ")) else ""
         s"""case C(`${c.id}`${fieldstr}) => ${rec(c.body)}"""
       }
       
@@ -111,14 +132,16 @@ trait ProofTrees { self: AssistedTheory =>
             
         case ImplE(tree, proof) => s"""implE(${rec(tree)})(_.by(${rec(proof)}))"""
 
-        case StructuralInduction(v, prop, cases) =>
+        case StructuralInduction(v, prop, ihs, cases) =>
           val casestr = (cases map synthCase) mkString ("\n")
-          s"""structuralInduction((${v.id.name}: Expr) => ${synthExpr(prop)}, ${synthValDef(v)}) { case (ihs, goal) =>
-            ihs.expression match {
+          s"""structuralInduction((${v.id.name}: Expr) => ${synthExpr(prop)}, ${synthValDef(v)}) { case (${ihs}, goal) =>
+            ${ihs}.expression match {
           	${casestr}
             }
           }"""
         
+        case HypothesisApplication(ihs, expr) => s"""${ihs}.hypothesis(${synthExpr(expr)})"""
+          	
         case Fact(id) => id
 
         case Let(id, v, in) =>
@@ -130,6 +153,14 @@ trait ProofTrees { self: AssistedTheory =>
         case Prove(expr, lemmas) =>
           val lemstr = if (lemmas.size > 0) ", " + ((lemmas map rec) mkString(", ")) else ""
           s"""prove(${synthExpr(expr) + lemstr})"""
+          
+        case EqNode(expr, jst, next) =>
+          s"""${synthExpr(expr)} ==|
+          ${rec(jst)} |
+          ${rec(next)}
+          """
+          
+        case EqLeaf(expr) => s"""${synthExpr(expr)}"""
       }
 
       rec(proof)
