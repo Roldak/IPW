@@ -102,7 +102,9 @@ object Main {
                     ForallI(x, 
                       EqNode(foldl(fv, fv(xv, hv), tv), ForallE(HypothesisApplication("ihs", tv), List(fv(xv, hv))),
                       EqNode(fv(fv(xv, hv), foldl(fv, zv, tv)), ForallE(Fact("isAssoc"), List(xv, hv, foldl(fv, zv, tv))),
-                      EqLeaf(fv(xv, foldl(fv, fv(zv, hv), tv)))))
+                      EqNode(fv(xv, fv(hv, foldl(fv, zv, tv))), ForallE(HypothesisApplication("ihs", tv), List(hv)),
+                      EqNode(fv(xv, foldl(fv, hv, tv)), ForallE(Fact("isUnit"), List(hv)), 
+                      EqLeaf(fv(xv, foldl(fv, fv(zv, hv), tv)))))))
                     )
                   ),
                   Case("Nil", Nil, Fact("isUnit"))
@@ -115,7 +117,6 @@ object Main {
 
       println(synthesize(proof))
       println(eval(proof))
-    
     }
     
     System.exit(0)
