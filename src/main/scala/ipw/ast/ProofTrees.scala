@@ -95,75 +95,104 @@ trait ProofTrees { self: AssistedTheory =>
     }
 
     def synthesize(proof: Proof): String = {
-      def synthValDef(v: ValDef): String = s""""${v.id.name}" :: ${v.tpe}"""
+      import scala.language.postfixOps
+      
+      case class Context(indent: Int, inBlock: Boolean) {
+        def indented = Context(indent + 1, false)
+        def newBlock = Context(indent + 1, true)
+        def noBlock = Context(indent, false)
+      }
+      
+      def format(s: String)(implicit ctx: Context): String = {
+        val lines = s.split("\n") map { line => 
+          if (line.stripMargin != line) "  " * ctx.indent + line.stripMargin 
+          else line
+        }
+        
+        lines.mkString("\n")
+      }
+      
+      def synthValDef(v: ValDef)(implicit ctx: Context): String = s""""${v.id.name}" :: ${v.tpe}"""
 
-      def synthExpr(e: Expr): String = e match {
+      def synthExpr(e: Expr)(implicit ctx: Context): String = e match {
         case Forall(vals, body) if vals.size <= 4 =>
           s"forall(${vals map synthValDef mkString ", "})((${vals map (_.id.name) mkString ", "}) => ${synthExpr(body)})"
 
         case _ => e.toString
       }
 
-      def synthCase(c: Case): String = {
+      def synthCase(c: Case)(implicit ctx: Context): String = {
         val fieldstr = if (c.fields.size > 0) ", " + (c.fields map (_.id.name) mkString(", ")) else ""
-        s"""case C(`${c.id}`${fieldstr}) => ${rec(c.body)}"""
+        s"""case C(`${c.id}`${fieldstr}) => ${rec(c.body)(ctx indented)}"""
       }
       
-      def rec(proof: Proof): String = proof match {
+      def recIndented(proof: Proof)(implicit ctx: Context): String = rec(proof)(ctx indented)
+      def recNewBlock(proof: Proof)(implicit ctx: Context): String = rec(proof)(ctx newBlock)
+      def recNoBlock(proof: Proof)(implicit ctx: Context): String = rec(proof)(ctx noBlock)
+      
+      def rec(proof: Proof)(implicit ctx: Context): String = format(proof match {
         case ForallI(v, body) =>
-          s"""forallI(${synthValDef(v)}) { ${v.id.name} => 
-            ${rec(body)}
-          }"""
+          s"""forallI(${synthValDef(v)(ctx noBlock)}) { ${v.id.name} => 
+          |  ${recNewBlock(body)}
+          |}"""
 
         case ImplI(id, hyp, body) =>
-          s"""implI(${synthExpr(hyp)}) { $id =>
-	        ${rec(body)}
-	      }"""
+          s"""implI(${synthExpr(hyp)(ctx noBlock)}) { $id =>
+	      |  ${recNewBlock(body)}
+	      |}"""
 
-        case AndI(trees) => s"""andI(${trees map rec mkString ", "})"""
+        case AndI(trees) => s"""andI(${trees map recNoBlock mkString ", "})"""
 
-        case ForallE(tree, expr) => s"""forallE(${rec(tree)})(${synthExpr(expr)})"""
+        case ForallE(tree, expr) => s"""forallE(${recNoBlock(tree)})(${synthExpr(expr)(ctx noBlock)})"""
         
         case LetAndE(tree, ids, body) =>
-          s"""{
-            val Seq(${ids mkString ", "}) = andE(${rec(tree)}) : Seq[Theorem]
-            ${rec(body)}
-          }"""
+          if (ctx.inBlock) 
+            s"""val Seq(${ids mkString ", "}) = andE(${recNoBlock(tree)}) : Seq[Theorem]
+            |${rec(body)}"""
+          else 
+            s"""{
+            |  val Seq(${ids mkString ", "}) = andE(${recNoBlock(tree)}) : Seq[Theorem]
+            |  ${recNewBlock(body)}
+            |}"""
             
-        case ImplE(tree, proof) => s"""implE(${rec(tree)})(_.by(${rec(proof)}))"""
+        case ImplE(tree, proof) => s"""implE(${recNoBlock(tree)})(_.by(${recNoBlock(proof)}))"""
 
         case StructuralInduction(v, prop, ihs, cases) =>
-          val casestr = (cases map synthCase) mkString ("\n")
-          s"""structuralInduction((${v.id.name}: Expr) => ${synthExpr(prop)}, ${synthValDef(v)}) { case (${ihs}, goal) =>
-            ${ihs}.expression match {
-          	${casestr}
-            }
-          }"""
+          val newctx = ctx noBlock
+          val casestr = (cases map (c => "|    " + synthCase(c)(newctx indented))) mkString ("\n")
+          s"""structuralInduction((${v.id.name}: Expr) => ${synthExpr(prop)(newctx)}, ${synthValDef(v)(newctx)}) { case (${ihs}, goal) =>
+          |  ${ihs}.expression match {
+               ${casestr}
+          |  }
+          |}"""
         
-        case HypothesisApplication(ihs, expr) => s"""${ihs}.hypothesis(${synthExpr(expr)})"""
+        case HypothesisApplication(ihs, expr) => s"""${ihs}.hypothesis(${synthExpr(expr)(ctx noBlock)})"""
           	
         case Fact(id) => id
 
         case Let(id, v, in) =>
-          s"""{
-	        val $id = ${rec(v)}
-	        ${rec(in)}
-	      }"""
+          if (ctx.inBlock)
+            s"""val $id = ${recIndented(v)}
+            |${rec(in)}"""
+	      else
+	        s"""{
+	        |  val $id = ${recIndented(v)}
+	        |  ${recNewBlock(in)}
+	        |}"""
 	        
         case Prove(expr, lemmas) =>
-          val lemstr = if (lemmas.size > 0) ", " + ((lemmas map rec) mkString(", ")) else ""
-          s"""prove(${synthExpr(expr) + lemstr})"""
+          val lemstr = if (lemmas.size > 0) ", " + ((lemmas map recNoBlock) mkString(", ")) else ""
+          s"""prove(${synthExpr(expr)(ctx noBlock) + lemstr})"""
           
         case EqNode(expr, jst, next) =>
-          s"""${synthExpr(expr)} ==|
-          ${rec(jst)} |
-          ${rec(next)}
-          """
+          s"""${synthExpr(expr)(ctx noBlock)} ==|
+          |${recNoBlock(jst)} |
+          |${recNoBlock(next)}"""
           
-        case EqLeaf(expr) => s"""${synthExpr(expr)}"""
-      }
+        case EqLeaf(expr) => s"""${synthExpr(expr)(ctx noBlock)}"""
+      })
 
-      rec(proof)
+      rec(proof)(Context(0, true))
     }
 
   }
