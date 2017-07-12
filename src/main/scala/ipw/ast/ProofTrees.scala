@@ -126,6 +126,30 @@ trait ProofTrees { self: AssistedTheory =>
         s"""case C(`${c.id}`${fieldstr}) => ${rec(c.body)(ctx indented)}"""
       }
       
+      def synthEqChain(chain: EqChain)(implicit ctx: Context): String = {
+        def inner(chain: EqChain): (List[String], Int) = chain match {
+          case EqNode(expr, jst, next) => 
+            val exprstr = synthExpr(expr)(ctx noBlock) 
+            val jststr = recNoBlock(jst)
+            val localen = Math.max(exprstr.size, jststr.size)
+            val (rest, globalen) = inner(next)
+            (exprstr :: jststr :: rest, Math.max(localen, globalen))
+            
+          case EqLeaf(expr) => 
+            val exprstr = synthExpr(expr)(ctx noBlock)
+            (List(exprstr), exprstr.size)
+        }
+        
+        val (strs, len) = inner(chain)
+        strs.zipWithIndex.map { case (str, idx) =>
+          val padright = (" " * (len - str.size))
+          if (idx == 0) str + padright + " ==|"
+          else if (idx == strs.size - 1) "|" + str + padright
+          else if (idx % 2 == 0) "|" + str + padright + " ==|"
+          else "|  " + str + padright + " |"
+        }.mkString("\n")
+      }
+      
       def recIndented(proof: Proof)(implicit ctx: Context): String = rec(proof)(ctx indented)
       def recNewBlock(proof: Proof)(implicit ctx: Context): String = rec(proof)(ctx newBlock)
       def recNoBlock(proof: Proof)(implicit ctx: Context): String = rec(proof)(ctx noBlock)
@@ -184,12 +208,7 @@ trait ProofTrees { self: AssistedTheory =>
           val lemstr = if (lemmas.size > 0) ", " + ((lemmas map recNoBlock) mkString(", ")) else ""
           s"""prove(${synthExpr(expr)(ctx noBlock) + lemstr})"""
           
-        case EqNode(expr, jst, next) =>
-          s"""${synthExpr(expr)(ctx noBlock)} ==|
-          |${recNoBlock(jst)} |
-          |${recNoBlock(next)}"""
-          
-        case EqLeaf(expr) => s"""${synthExpr(expr)(ctx noBlock)}"""
+        case chain: EqChain => synthEqChain(chain)
       })
 
       rec(proof)(Context(0, true))
