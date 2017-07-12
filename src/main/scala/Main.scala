@@ -89,6 +89,8 @@ object Main {
       val lv = l.toVariable
       val hv = h.toVariable
       val tv = t.toVariable
+       
+      import ProofExprImplicits._
       
       val proof = ForallI(f,
         ForallI(z,
@@ -98,8 +100,9 @@ object Main {
                 List(
                   Case("Cons", List(h, t),
                     ForallI(x, 
-                      EqNode(foldl(fv, fv(xv, hv), tv), ForallE(HypothesisApplication("ihs", tv), fv(xv, hv)),
-                      EqLeaf(fv(fv(xv, hv), foldl(fv, zv, tv))))
+                      EqNode(foldl(fv, fv(xv, hv), tv), ForallE(HypothesisApplication("ihs", tv), List(fv(xv, hv))),
+                      EqNode(fv(fv(xv, hv), foldl(fv, zv, tv)), ForallE(Fact("isAssoc"), List(xv, hv, foldl(fv, zv, tv))),
+                      EqLeaf(fv(xv, foldl(fv, fv(zv, hv), tv)))))
                     )
                   ),
                   Case("Nil", Nil, Fact("isUnit"))
