@@ -98,7 +98,7 @@ object Main {
             LetAndE(Fact("isMonoid"), List("isAssoc", "isUnit"),
               StructuralInduction(l, forall(x) {xv => foldl(fv, xv, lv) === fv(xv, foldl(fv, zv, lv))}, "ihs",
                 List(
-                  Case("Cons", List(h, t),
+                  Case(cons, List(h, t),
                     ForallI(x, 
                       EqNode(foldl(fv, fv(xv, hv), tv), ForallE(HypothesisApplication("ihs", tv), List(fv(xv, hv))),
                       EqNode(fv(fv(xv, hv), foldl(fv, zv, tv)), ForallE(Fact("isAssoc"), List(xv, hv, foldl(fv, zv, tv))),
@@ -107,7 +107,7 @@ object Main {
                       EqLeaf(fv(xv, foldl(fv, fv(zv, hv), tv)))))))
                     )
                   ),
-                  Case("Nil", Nil, Fact("isUnit"))
+                  Case(nil, Nil, Fact("isUnit"))
                 )
               )
             )
@@ -120,6 +120,7 @@ object Main {
     }
     
     System.exit(0)
+    
     
     /*val lemma = IPWprove(forall("f" :: ((A, A) =>: A), "z" :: A)(
         (f, z) => isMonoid(f, z) ==> forall("l" :: ListA, "x" :: A)((l, x) => foldl(f, x, l) === f(x, foldl(f, z, l)))), proofsFile)
@@ -137,21 +138,20 @@ object Main {
           case (ihs, goal) =>
             ihs.expression match {
               case C(`cons`, h, t) =>
-                println("HTD : ", h, t, ihs.expression)
                 forallI("x" :: A) { x =>
                   foldl(f, x, ihs.expression) ==|
                     trivial |
-                    foldl(f, f(x, h), t) ==|
+                  foldl(f, f(x, h), t) ==|
                     forallE(ihs.hypothesis(t))(f(x, h)) |
-                    f(f(x, h), foldl(f, z, t)) ==|
+                  f(f(x, h), foldl(f, z, t)) ==|
                     forallE(isAssoc)(x, h, foldl(f, z, t)) |
-                    f(x, f(h, foldl(f, z, t))) ==|
+                  f(x, f(h, foldl(f, z, t))) ==|
                     forallE(ihs.hypothesis(t))(h) |
-                    f(x, foldl(f, h, t)) ==|
+                  f(x, foldl(f, h, t)) ==|
                     forallE(isUnit)(h) |
-                    f(x, foldl(f, f(z, h), t)) ==|
+                  f(x, foldl(f, f(z, h), t)) ==|
                     trivial |
-                    f(x, foldl(f, z, ihs.expression))
+                  f(x, foldl(f, z, ihs.expression))
                 }
 
               case C(`nil`) => isUnit

@@ -14,6 +14,7 @@ trait ProofTrees { self: AssistedTheory =>
     object ProofExprImplicits {
       import scala.language.implicitConversions
       implicit def expr2ProofExpr(e: Expr): ProofExpr = new ProofExpr(e)
+      implicit def exprSeq2ProofExprSeq(s: Seq[Expr]): Seq[ProofExpr] = s map expr2ProofExpr
     }
 
     sealed abstract class Proof
@@ -30,7 +31,7 @@ trait ProofTrees { self: AssistedTheory =>
 
     // Induction
 
-    case class Case(id: String, fields: Seq[ValDef], body: Proof)
+    case class Case(id: Identifier, fields: Seq[ValDef], body: Proof)
     case class StructuralInduction(v: ValDef, prop: ProofExpr, ihs: String, cases: Seq[Case]) extends Proof
     case class HypothesisApplication(ihs: String, expr: ProofExpr) extends Proof
 
@@ -43,8 +44,8 @@ trait ProofTrees { self: AssistedTheory =>
     sealed abstract class EqChain extends Proof
     case class EqNode(expr: ProofExpr, jst: Proof, next: EqChain) extends EqChain
     case class EqLeaf(expr: ProofExpr) extends EqChain
-
-    def eval(proof: Proof): Attempt[Theorem] = {
+    
+    def eval(proof: Proof, facts: Map[String, Theorem] = Map.empty, ihses: Map[String, StructuralInductionHypotheses] = Map.empty): Attempt[Theorem] = {
       import scala.language.implicitConversions
       implicit def proofExpr2Expr(p: ProofExpr)(implicit ctx: Context): Expr = replaceFromSymbols(ctx.substs, p.e)
       implicit def seqProofExpr2SeqExpr(s: Seq[ProofExpr])(implicit ctx: Context): Seq[Expr] = s map proofExpr2Expr
@@ -88,7 +89,7 @@ trait ProofTrees { self: AssistedTheory =>
           structuralInduction(x => replaceFromSymbols(Map(v -> x), prop), v) {
             case (ihs, goal) =>
               val Some((caseId, exprs)) = C.unapplySeq(ihs.expression)
-              cases.find(_.id == caseId.name) match {
+              cases.find(_.id == caseId) match {
                 case Some(c) => rec(c.body)((c.fields zip exprs)
                   .foldLeft(ctx withIhs (ihsid, ihs))((ctx, kv) => ctx withSubst (kv._1.toVariable, kv._2)))
                 case _ => Attempt.fail(s"Incomplete structural induction (no case for ${caseId})")
@@ -139,7 +140,7 @@ trait ProofTrees { self: AssistedTheory =>
 
       def synthCase(c: Case)(implicit ctx: Context): String = {
         val fieldstr = if (c.fields.size > 0) ", " + (c.fields map (_.id.name) mkString (", ")) else ""
-        s"""case C(`${c.id}`${fieldstr}) => ${rec(c.body)(ctx indented)}"""
+        s"""case C(`${c.id.name}`${fieldstr}) => ${rec(c.body)(ctx indented)}"""
       }
 
       def synthEqChain(chain: EqChain)(implicit ctx: Context): String = {

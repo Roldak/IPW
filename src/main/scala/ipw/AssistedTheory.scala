@@ -29,7 +29,7 @@ trait AssistedTheory
     with Suggestions
     with AssistantWindow
     with IOs 
-    with ProofTrees { self: AssistedTheory with IWFileInterface =>
+    with ProofTrees { self: AssistedTheory with IWFileInterface with GenericRuleProvider =>
 
   protected[ipw]type ProofState = (Expr, Seq[NamedSuggestion], Map[String, Theorem], Boolean)
   protected[ipw]type UpdateStep = Suggestion
