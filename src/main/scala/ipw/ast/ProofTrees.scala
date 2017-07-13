@@ -26,12 +26,12 @@ trait ProofTrees { self: AssistedTheory =>
 
     // Elim rules
     case class ForallE(tree: Proof, exprs: Seq[ProofExpr]) extends Proof
-    case class LetAndE(tree: Proof, ids: List[String], body: Proof) extends Proof
+    case class LetAndE(tree: Proof, ids: Seq[String], body: Proof) extends Proof
     case class ImplE(tree: Proof, proof: Proof) extends Proof
 
     // Induction
 
-    case class Case(id: Identifier, fields: Seq[ValDef], body: Proof)
+    case class Case(id: Identifier, fields: Seq[Variable], body: Proof)
     case class StructuralInduction(v: ValDef, prop: ProofExpr, ihs: String, cases: Seq[Case]) extends Proof
     case class HypothesisApplication(ihs: String, expr: ProofExpr) extends Proof
 
@@ -91,7 +91,7 @@ trait ProofTrees { self: AssistedTheory =>
               val Some((caseId, exprs)) = C.unapplySeq(ihs.expression)
               cases.find(_.id == caseId) match {
                 case Some(c) => rec(c.body)((c.fields zip exprs)
-                  .foldLeft(ctx withIhs (ihsid, ihs))((ctx, kv) => ctx withSubst (kv._1.toVariable, kv._2)))
+                  .foldLeft(ctx withIhs (ihsid, ihs))((ctx, kv) => ctx withSubst (kv._1, kv._2)))
                 case _ => Attempt.fail(s"Incomplete structural induction (no case for ${caseId})")
               }
           }

@@ -8,7 +8,7 @@ object Main {
   val proofsFile = "test.iwf"
 
   def main(args: Array[String]): Unit = {
-    
+
     val foldlID = FreshIdentifier("foldl")
     val foldrID = FreshIdentifier("foldr")
 
@@ -74,7 +74,7 @@ object Main {
     def isMonoid(f: Expr, z: Expr): Expr = and(isAssociative(f), isUnit(f, z))
 
     {
-      import AST._
+      /*import AST._
       
       val f = "f" :: ((A, A) =>: A)
       val z = "z" :: A
@@ -98,7 +98,7 @@ object Main {
             LetAndE(Fact("isMonoid"), List("isAssoc", "isUnit"),
               StructuralInduction(l, forall(x) {xv => foldl(fv, xv, lv) === fv(xv, foldl(fv, zv, lv))}, "ihs",
                 List(
-                  Case(cons, List(h, t),
+                  Case(cons, List(hv, tv),
                     ForallI(x, 
                       EqNode(foldl(fv, fv(xv, hv), tv), ForallE(HypothesisApplication("ihs", tv), List(fv(xv, hv))),
                       EqNode(fv(fv(xv, hv), foldl(fv, zv, tv)), ForallE(Fact("isAssoc"), List(xv, hv, foldl(fv, zv, tv))),
@@ -113,25 +113,47 @@ object Main {
             )
           )
         )
-      )
+      )*/
+/*
+      val proof = forallIGen("f" :: ((A, A) =>: A)) { f =>
+        forallIGen("z" :: A) { z =>
+          implIGen("isMonoid", isMonoid(f, z)) { isMonoid =>
+            andEGen(isMonoid, List("isAssoc", "isUnit")) {
+              case Seq(isAssoc, isUnit) =>
+                structuralInductionGen("l" :: ListA, (l: Expr) => forall("x" :: A) {
+                  x => foldl(f, x, l) === f(x, foldl(f, z, l))
+                }, "ihs") { (_, ihshyp, ihsexpr, _) =>
+                  ihsexpr match {
+                    case C(`cons`, h, t) =>
+                      forallIGen("x" :: A) { x =>
+                        
+                        proveGen(foldl(f, x, ihsexpr) === f(x, foldl(f, z, ihsexpr)), List())
+                      }
 
-      println(synthesize(proof))
-      println(eval(proof))
+                    case C(`nil`) => isUnit
+                  }
+                }
+            }
+          }
+        }
+      }
+
+      println(AST.synthesize(proof))
+      println(eval(proof))*/
     }
-    
+
     System.exit(0)
-    
-    
+
     /*val lemma = IPWprove(forall("f" :: ((A, A) =>: A), "z" :: A)(
         (f, z) => isMonoid(f, z) ==> forall("l" :: ListA, "x" :: A)((l, x) => foldl(f, x, l) === f(x, foldl(f, z, l)))), proofsFile)
       
     println(lemma)
 	*/
-    
+
     val theorem = forallI("f" :: ((A, A) =>: A), "z" :: A) { (f, z) =>
       implI(isMonoid(f, z)) { isMonoid =>
         val Seq(isAssoc, isUnit) = andE(isMonoid): Seq[Theorem]
-        
+
         val lemma = structuralInduction((l: Expr) => forall("x" :: A) {
           x => foldl(f, x, l) === f(x, foldl(f, z, l))
         }, "l" :: ListA) {
@@ -141,23 +163,23 @@ object Main {
                 forallI("x" :: A) { x =>
                   foldl(f, x, ihs.expression) ==|
                     trivial |
-                  foldl(f, f(x, h), t) ==|
+                    foldl(f, f(x, h), t) ==|
                     forallE(ihs.hypothesis(t))(f(x, h)) |
-                  f(f(x, h), foldl(f, z, t)) ==|
+                    f(f(x, h), foldl(f, z, t)) ==|
                     forallE(isAssoc)(x, h, foldl(f, z, t)) |
-                  f(x, f(h, foldl(f, z, t))) ==|
+                    f(x, f(h, foldl(f, z, t))) ==|
                     forallE(ihs.hypothesis(t))(h) |
-                  f(x, foldl(f, h, t)) ==|
+                    f(x, foldl(f, h, t)) ==|
                     forallE(isUnit)(h) |
-                  f(x, foldl(f, f(z, h), t)) ==|
+                    f(x, foldl(f, f(z, h), t)) ==|
                     trivial |
-                  f(x, foldl(f, z, ihs.expression))
+                    f(x, foldl(f, z, ihs.expression))
                 }
 
               case C(`nil`) => isUnit
             }
         }
-        
+
         structuralInduction((l: Expr) => foldl(f, z, l) === foldr(f, z, l), "l" :: ListA) {
           case (ihs, goal) =>
             ihs.expression match {
@@ -177,7 +199,7 @@ object Main {
               case C(`nil`) => trivial
             }
         }
-/*
+        /*
         IPWprove(
           forall("l" :: ListA)(l => foldl(f, z, l) === foldr(f, z, l)),
           proofsFile,
