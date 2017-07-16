@@ -47,6 +47,13 @@ trait ProofTrees { self: AssistedTheory with ProofBuilder =>
     case class EqNode(expr: ProofExpr, jst: Proof, next: EqChain) extends EqChain
     case class EqLeaf(expr: ProofExpr) extends EqChain
 
+    object EqExpr {
+      def unapply(eq: EqChain): Option[ProofExpr] = eq match {
+        case EqNode(expr, _, _) => Some(expr)
+        case EqLeaf(expr) => Some(expr)
+      }
+    }
+
     private def findKey[K, T](map: Map[K, T], key: K): Attempt[T] = map get key match {
       case Some(v) => Success(v)
       case _ => Attempt.fail("not found")
@@ -108,50 +115,7 @@ trait ProofTrees { self: AssistedTheory with ProofBuilder =>
 
       rec(proof)(Context(Map.empty, facts, ihses))
     }
-/*
-    def evalExpr(proof: Proof, ihses: Map[String, StructuralInductionHypothesis]): Expr = {
-      import scala.language.implicitConversions
-      implicit def proofExpr2Expr(p: ProofExpr)(implicit ctx: Context): Expr = replaceFromSymbols(ctx.substs, p.e)
-      implicit def seqProofExpr2SeqExpr(s: Seq[ProofExpr])(implicit ctx: Context): Seq[Expr] = s map proofExpr2Expr
 
-      case class Context(substs: Map[Variable, Expr], facts: Map[String, Expr], ihses: Map[String, StructuralInductionHypothesis]) {
-        def withSubst(v: Variable, expr: Expr) = Context(substs + (v -> expr), facts, ihses)
-        def withFact(id: String, e: Expr) = Context(substs, facts + (id -> e), ihses)
-        def withFacts(fs: Iterable[(String, Expr)]) = Context(substs, facts ++ fs, ihses)
-        def withIhs(id: String, ihs: StructuralInductionHypothesis) = Context(substs, facts, ihses + (id -> ihs))
-
-        def subst(v: Variable): Attempt[Expr] = findKey(substs, v)
-        def fact(id: String): Attempt[Expr] = findKey(facts, id)
-        def ihs(id: String): Attempt[StructuralInductionHypothesis] = findKey(ihses, id)
-      }
-
-      def rec(proof: Proof)(implicit ctx: Context): Expr = proof match {
-        case ForallI(vs, body) => Forall(vs, rec(body))
-        case AndI(trees) => And(trees map rec)
-        case ImplI(id, hyp, body) => Implies(hyp, rec(body))
-
-        case ForallE(expr, args) => rec(expr) match {
-          case Forall(params, e) if args.size == params.size => replaceFromSymbols((params zip (args: Seq[Expr])).toMap, e)
-        }
-        case LetAndE(tree, ids, body) => rec(tree) match {
-          case And(exprs) if ids.size == exprs.size => rec(body)(ctx withFacts (ids zip exprs))
-        }
-        case ImplE(tree, _) => rec(tree) match {
-          case Implies(_, body) => body
-        }
-
-        case StructuralInduction(vd, prop, ihsid, cases) => Forall(Seq(vd), prop)
-
-        case HypothesisApplication(ihsid, expr) => rec(ctx ihs ihsid hyp expr)
-
-        case Fact(id) => ctx fact id
-        case Let(id, expr, body) => rec(body)(ctx withFact (id, rec(expr)))
-        case Prove(expr, _) => expr
-      }
-
-      rec(proof)(Context(Map.empty, Map.empty, ihses))
-    }
-*/
     def synthesize(proof: Proof): String = {
       import scala.language.postfixOps
 
@@ -189,9 +153,9 @@ trait ProofTrees { self: AssistedTheory with ProofBuilder =>
 
       def synthEqChain(chain: EqChain)(implicit ctx: Context): String = {
         def inner(chain: EqChain): (List[String], Int) = chain match {
-          case EqNode(expr, jst, next) =>
+          case EqNode(expr, jst, next @ EqExpr(nextExpr)) =>
             val exprstr = synthExpr(expr)(ctx noBlock)
-            val jststr = recNoBlock(jst)
+            val jststr = if (jst == Prove(ProofExpr(Equals(expr, nextExpr)))) "trivial" else recNoBlock(jst)
             val localen = Math.max(exprstr.size, jststr.size)
             val (rest, globalen) = inner(next)
             (exprstr :: jststr :: rest, Math.max(localen, globalen))
@@ -202,7 +166,9 @@ trait ProofTrees { self: AssistedTheory with ProofBuilder =>
         }
 
         val (strs, len) = inner(chain)
-        strs.zipWithIndex.map {
+
+        if (strs.size == 1) strs.head
+        else strs.zipWithIndex.map {
           case (str, idx) =>
             val pad = (" " * (len - str.size))
             if (idx == 0) str + pad + " ==|"
@@ -210,6 +176,23 @@ trait ProofTrees { self: AssistedTheory with ProofBuilder =>
             else if (idx % 2 == 0) "|" + str + pad + " ==|"
             else "|  " + pad + str + " |"
         }.mkString("\n")
+      }
+
+      def tryTurnIntoEqChain(p: Prove)(implicit ctx: Context): Attempt[EqChain] = p match {
+        case Prove(ProofExpr(toProve), Seq(p: Prove, _)) => p match {
+          case Prove(ProofExpr(Equals(`toProve`, leaf)), Seq(next: Prove, jst)) =>
+            def buildChain(p: Prove, sofar: EqChain, lastjst: Proof): Attempt[EqChain] = p match {
+              case Prove(ProofExpr(Equals(`toProve`, expr)), Seq(next: Prove, jst)) => 
+                buildChain(next, EqNode(ProofExpr(expr), lastjst, sofar), jst)
+              case Prove(ProofExpr(BooleanLiteral(true)), Seq()) => EqNode(ProofExpr(toProve), lastjst, sofar)
+              case _ => Attempt.fail("Could not deduce EqChain")
+            } 
+            
+            buildChain(next, EqLeaf(ProofExpr(leaf)), jst)
+            
+          case _ => Attempt.fail("Could not deduce EqChain")
+        }
+        case _ => Attempt.fail("Could not deduce EqChain")
       }
 
       def recIndented(proof: Proof)(implicit ctx: Context): String = rec(proof)(ctx indented)
@@ -244,7 +227,7 @@ trait ProofTrees { self: AssistedTheory with ProofBuilder =>
             |}"""
 
         case AndESelect(tree, idx) => s"""andE(${recNoBlock(tree)})($idx)"""
-            
+
         case ImplE(tree, proof) => s"""implE(${recNoBlock(tree)})(_.by(${recNoBlock(proof)}))"""
 
         case StructuralInduction(v, prop, ihs, cases) =>
@@ -270,9 +253,12 @@ trait ProofTrees { self: AssistedTheory with ProofBuilder =>
 	        |  ${recNewBlock(in)}
 	        |}"""
 
-        case Prove(expr, lemmas) =>
-          val lemstr = if (lemmas.size > 0) ", " + ((lemmas map recNoBlock) mkString (", ")) else ""
-          s"""prove(${synthExpr(expr)(ctx noBlock) + lemstr})"""
+        case p @ Prove(expr, lemmas) => tryTurnIntoEqChain(p) match {
+          case Success(chain) => synthEqChain(chain)
+          case _ =>
+            val lemstr = if (lemmas.size > 0) ", " + ((lemmas map recNoBlock) mkString (", ")) else ""
+            s"""prove(${synthExpr(expr)(ctx noBlock) + lemstr})"""
+        }
 
         case chain: EqChain => synthEqChain(chain)
       })
