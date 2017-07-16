@@ -6,6 +6,7 @@ import inox.trees.dsl._
 import inox.trees.exprOps._
 import welder._
 import ipw.AssistedTheory
+import ipw.GenericRuleProvider
 import inox.ast.TreeDeconstructor
 import inox.ast.TreeExtractor
 import ipw.eval.PartialEvaluator
@@ -22,11 +23,11 @@ private object Utils {
   }
 }
 
-protected[ipw] trait Analysers { theory: AssistedTheory =>
-  private implicit class IHUtils(hyp: StructuralInductionHypotheses) {
-    lazy val variablesSet = hyp.variables.toSet
+protected[ipw] trait Analysers { theory: AssistedTheory with GenericRuleProvider =>
+  private implicit class IHUtils(hyp: IPWStructuralInductionHypothesis) {
+    lazy val variablesSet = hyp.vars.toSet
 
-    private def isInnerOrSelf(inner: Expr): Boolean = inner == hyp.expression || isInner(inner)
+    private def isInnerOrSelf(inner: Expr): Boolean = inner == hyp.expr || isInner(inner)
 
     def isInner(inner: Expr): Boolean = inner match {
       case v: Variable           => variablesSet.contains(v)
@@ -174,7 +175,7 @@ protected[ipw] trait Analysers { theory: AssistedTheory =>
   }
 
   private object TheoremWithExpression {
-    def unapply(thm: Theorem): Option[(Theorem, Expr)] = Some((thm, thm.expression))
+    def unapply(thm: IPWResult): Option[(IPWResult, Expr)] = Some((thm, thm.expression))
   }
 
   /*
@@ -182,11 +183,11 @@ protected[ipw] trait Analysers { theory: AssistedTheory =>
    * with the help of a substitution to instantiate foralls and of proofs to instantiate the premises.
    * implE(thm)(goal => {println(s"${goal.expression} VS ${instPrems.head.expression}"); time(goal.by(instPrems.head))})
    */
-  private def followPath(thm: Theorem, path: Path, subst: Substitution, instPrems: Seq[Theorem]): Theorem = path match {
-    case NotE(next)              => followPath(notE(thm), next, subst, instPrems)
-    case AndE(i, next)           => followPath(andE(thm)(i), next, subst, instPrems)
-    case ForallE(vals, next)     => followPath(forallE(thm)(subst(vals.head.toVariable), (vals.tail map (v => subst(v.toVariable)): _*)), next, subst, instPrems)
-    case ImplE(assumption, next) => followPath(implE(thm)(goal => time(goal.by(instPrems.head))), next, subst, instPrems.tail)
+  private def followPath(thm: IPWResult, path: Path, subst: Substitution, instPrems: Seq[IPWResult]): IPWResult = path match {
+    //case NotE(next)              => followPath(notE(thm), next, subst, instPrems)
+    case AndE(i, next)           => followPath(andEGenSelect(thm, i), next, subst, instPrems)
+    case ForallE(vals, next)     => followPath(forallEGen(thm, vals map (_.toVariable)), next, subst, instPrems)
+    case ImplE(assumption, next) => followPath(implEGen(thm, instPrems.head), next, subst, instPrems.tail)
     case EndOfPath               => thm
   }
 
@@ -200,20 +201,20 @@ protected[ipw] trait Analysers { theory: AssistedTheory =>
    * The main mechanism for finding the proofs (and the substitutions) is unification.
    */
 
-  private def provePattern(expr: Expr, instantiableVars: Set[Variable], avThms: Seq[Theorem]): Seq[(Substitution, Theorem)] = {
+  private def provePattern(expr: Expr, instantiableVars: Set[Variable], avThms: Seq[IPWResult]): Seq[(Substitution, IPWResult)] = {
     val deeps = expr match {
       case And(exprs) =>
-        proveDependentSequence(exprs, instantiableVars, Map.empty, avThms) map (s => (s._1, andI(s._2)))
+        proveDependentSequence(exprs, instantiableVars, Map.empty, avThms) map (s => (s._1, andIGen(s._2)))
 
       case Forall(vals, body) =>
-        provePattern(body, instantiableVars, avThms) flatMap (s => forallI(vals)(_ => s._2) map (thm => Seq((s._1, thm))) getOrElse (Nil))
+        provePattern(body, instantiableVars, avThms) flatMap (s => forallIGen(vals)(_ => s._2) map (thm => Seq((s._1, thm))) getOrElse (Nil))
 
       // TODO: support more cases
 
       case _ => Nil
     }
 
-    deeps ++ avThms.foldLeft[Seq[(Substitution, Theorem)]](Nil) { (acc, thm) =>
+    deeps ++ avThms.foldLeft[Seq[(Substitution, IPWResult)]](Nil) { (acc, thm) =>
       acc ++ (conclusionsOf(thm.expression) flatMap {
         case Conclusion(pattern, freeVars, premises, path) =>
           instantiatePath(expr, pattern, path, freeVars ++ instantiableVars, premises, avThms) flatMap {
@@ -228,7 +229,7 @@ protected[ipw] trait Analysers { theory: AssistedTheory =>
    * Proves a sequence of pattern expressions (using provePattern) sharing the same set of instantiable vars.
    */
   private def proveDependentSequence(exprs: Seq[Expr], instantiable: Set[Variable], sub: Substitution,
-                                     avThms: Seq[Theorem], provedExprs: Seq[Theorem] = Nil): Seq[(Substitution, Seq[Theorem])] = exprs match {
+                                     avThms: Seq[IPWResult], provedExprs: Seq[IPWResult] = Nil): Seq[(Substitution, Seq[IPWResult])] = exprs match {
     case e +: es =>
       provePattern(replaceFromSymbols(sub, e), instantiable, avThms) flatMap {
         case (thisSub, thm) =>
@@ -245,7 +246,7 @@ protected[ipw] trait Analysers { theory: AssistedTheory =>
    *
    *  - If it appears in a premise of an implication, try to find it with unification
    */
-  private def instantiatePath(exp: Expr, pattern: Expr, path: Path, vars: Set[Variable], premises: Seq[Expr], avThms: Seq[Theorem]): Seq[(Substitution, Seq[Theorem])] = {
+  private def instantiatePath(exp: Expr, pattern: Expr, path: Path, vars: Set[Variable], premises: Seq[Expr], avThms: Seq[IPWResult]): Seq[(Substitution, Seq[IPWResult])] = {
     unify(exp, pattern, vars) match {
       case Some(subst) => proveDependentSequence(premises, vars filterNot (subst isDefinedAt _), subst, avThms)
       case _           => Nil
@@ -256,7 +257,7 @@ protected[ipw] trait Analysers { theory: AssistedTheory =>
    * Given a root expression expr and a root theorem thm,
    * tries to find subexpressions inside expr where some conclusion of thm could be applied.
    */
-  private def instantiateConclusion(expr: Expr, thm: Theorem, avThms: Seq[Theorem]): Seq[(Expr, Expr, Theorem)] = {
+  private def instantiateConclusion(expr: Expr, thm: IPWResult, avThms: Seq[IPWResult]): Seq[(Expr, Expr, IPWResult)] = {
     val concls = conclusionsOf(thm.expression) flatMap {
       case concl @ Conclusion(Equals(a, b), vars, premises, path) => Seq(
         (a, (x: Equals) => x.lhs, (x: Equals) => x.rhs, vars, premises, path),
@@ -281,7 +282,7 @@ protected[ipw] trait Analysers { theory: AssistedTheory =>
    * Given a root expression expr and a collection of theorems thms,
    * finds all possible applications of any theorem in thms on any subexpression of expr
    */
-  private def findTheoremApplications(expr: Expr, thms: Map[String, Theorem]): Seq[NamedSuggestion] = {
+  private def findTheoremApplications(expr: Expr, thms: Map[String, IPWResult]): Seq[NamedSuggestion] = {
     thms.toSeq flatMap {
       case (name, thm) =>
         instantiateConclusion(expr, thm, thms.values.toSeq) map {
@@ -294,9 +295,9 @@ protected[ipw] trait Analysers { theory: AssistedTheory =>
    * Collect function calls in the expression and generates suggestion for expanding them (using partial evaluation)
    */
   private def collectInvocations(e: Expr): Seq[NamedSuggestion] = functionCallsOf(e).map { inv =>
-    def result(): (Expr, Theorem) = PartialEvaluator.default(program, Some(inv)).eval(e) match {
-      case Successful(ev) => (ev, prove(e === ev))
-      case _              => (e, truth)
+    def result(): (Expr, IPWResult) = PartialEvaluator.default(program, Some(inv)).eval(e) match {
+      case Successful(ev) => (ev, proveGen(e === ev))
+      case _              => (e, truthGen)
     }
     (s"Expand invocation of '${inv.id}'", RewriteSuggestion(inv, RewriteResult(result)))
   }.toSeq
@@ -304,16 +305,16 @@ protected[ipw] trait Analysers { theory: AssistedTheory =>
   /*
    * Finds expressions which can be applied to the inductive hypothesis in order to generate a new theorem.
    */
-  private def findInductiveHypothesisApplication(e: Expr, ihs: Seq[StructuralInductionHypotheses]): Map[String, Theorem] = {
-    val ihset = ihs.toSet
-    val thms = collect[(String, Theorem)] { e: Expr =>
-      ihset.flatMap { ihs =>
+  private def findInductiveHypothesisApplication(e: Expr, ihses: Map[String, IPWStructuralInductionHypothesis]): Map[String, IPWResult] = {
+    val ihset = ihses.toSet
+    val thms = collect[(String, IPWResult)] { e: Expr =>
+      ihset.flatMap { case (id, ihs) =>
         if (ihs.isInner(e)) {
-          ihs.hypothesis(e) match {
-            case Success(thm) => Set((s"IH on `$e`", thm))
-            case Failure(_)   => Set.empty[(String, Theorem)]
+          ihs.hyp(e) match {
+            case Success(thm) => Set((s"""IH "$id" on `$e`""", thm))
+            case Failure(_)   => Set.empty[(String, IPWResult)]
           }
-        } else Set.empty[(String, Theorem)]
+        } else Set.empty[(String, IPWResult)]
       }
     }(e)
 
@@ -323,8 +324,8 @@ protected[ipw] trait Analysers { theory: AssistedTheory =>
   /*
    * Generates all suggestions by analyzing the given root expression and the theorems/IHS that are available.
    */
-  protected[ipw] def analyse(e: Expr, thms: Map[String, Theorem], ihs: Seq[StructuralInductionHypotheses]): (Seq[NamedSuggestion], Map[String, Theorem]) = {
-    val findInduct = findInductiveHypothesisApplication(e, ihs)
+  protected[ipw] def analyse(e: Expr, thms: Map[String, IPWResult], ihses: Map[String, IPWStructuralInductionHypothesis]): (Seq[NamedSuggestion], Map[String, IPWResult]) = {
+    val findInduct = findInductiveHypothesisApplication(e, ihses)
     val newThms = thms ++ findInduct
     (collectInvocations(e) ++ findTheoremApplications(e, newThms), newThms)
   }

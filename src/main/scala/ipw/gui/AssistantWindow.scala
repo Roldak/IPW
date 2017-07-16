@@ -27,7 +27,7 @@ import com.sun.javafx.tk.Toolkit
 protected[ipw] trait AssistantWindow
     extends Rendering
     with ExpressionPanes
-    with Modes { theory: AssistedTheory =>
+    with Modes { theory: AssistedTheory with GenericRuleProvider =>
 
   Platform.implicitExit = false
 

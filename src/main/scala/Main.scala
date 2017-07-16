@@ -142,13 +142,12 @@ object Main {
       println(eval(proof))*/
     }
 
-    System.exit(0)
+    //System.exit(0)
 
-    /*val lemma = IPWprove(forall("f" :: ((A, A) =>: A), "z" :: A)(
+    val lemma = IPWprove(forall("f" :: ((A, A) =>: A), "z" :: A)(
         (f, z) => isMonoid(f, z) ==> forall("l" :: ListA, "x" :: A)((l, x) => foldl(f, x, l) === f(x, foldl(f, z, l)))), proofsFile)
       
     println(lemma)
-	*/
 
     val theorem = forallI("f" :: ((A, A) =>: A), "z" :: A) { (f, z) =>
       implI(isMonoid(f, z)) { isMonoid =>
@@ -398,7 +397,7 @@ object Main {
       prove(SucType(add_(m, n)) === add_(SucType(m), n))
     }
 */
-
+/*
     val add1rightlemma = structuralInduction(m => forall("n" :: NatType) { n => SucType(add_(m, n)) === add_(m, SucType(n)) }, "m" :: NatType) {
       case (ihs, goal) =>
         ihs.expression match {
@@ -414,7 +413,7 @@ object Main {
         }
     }
 
-    println(add1rightlemma)
+    println(add1rightlemma)*/
     /*
     val thm = structuralInduction(n => sum_(n) === div2(mul_(SucType(n), n)), "n" :: NatType) {
       case (ihs, _) =>

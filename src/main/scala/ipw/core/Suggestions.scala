@@ -12,19 +12,19 @@ import ipw.AssistedTheory
 protected[ipw] trait Suggestions { theory: AssistedTheory =>
   import trees._
   
-  protected[ipw] class RewriteResult private (computeRes: () => (Expr, Theorem)) {
+  protected[ipw] class RewriteResult private (computeRes: () => (Expr, IPWResult)) {
     private lazy val result = computeRes()
     
-    def apply(): (Expr, Theorem) = result
+    def apply(): (Expr, IPWResult) = result
     
     override def toString(): String = s"RewriteResult(${result._1}, ${result._2})"
   }
   
   protected[ipw] object RewriteResult {
-    def apply(expr: Expr, proof: Theorem) = new RewriteResult(() => (expr, proof))
-    def apply(res: () => (Expr, Theorem)) = new RewriteResult(res)
+    def apply(expr: Expr, proof: IPWResult) = new RewriteResult(() => (expr, proof))
+    def apply(res: () => (Expr, IPWResult)) = new RewriteResult(res)
     
-    def unapply(res: RewriteResult): Option[(Expr, Theorem)] = Some(res())
+    def unapply(res: RewriteResult): Option[(Expr, IPWResult)] = Some(res())
   }
   
   protected[ipw] sealed abstract class Suggestion
