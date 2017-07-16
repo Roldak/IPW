@@ -42,18 +42,6 @@ trait ProofTrees { self: AssistedTheory with ProofBuilder =>
     case class Let(id: String, value: Proof, in: Proof) extends Proof
     case class Prove(expr: ProofExpr, facts: Seq[Proof] = Nil) extends Proof
 
-    // Chains
-    sealed abstract class EqChain extends Proof
-    case class EqNode(expr: ProofExpr, jst: Proof, next: EqChain) extends EqChain
-    case class EqLeaf(expr: ProofExpr) extends EqChain
-
-    object EqExpr {
-      def unapply(eq: EqChain): Option[ProofExpr] = eq match {
-        case EqNode(expr, _, _) => Some(expr)
-        case EqLeaf(expr) => Some(expr)
-      }
-    }
-
     private def findKey[K, T](map: Map[K, T], key: K): Attempt[T] = map get key match {
       case Some(v) => Success(v)
       case _ => Attempt.fail("not found")
@@ -63,16 +51,6 @@ trait ProofTrees { self: AssistedTheory with ProofBuilder =>
       import scala.language.implicitConversions
       implicit def proofExpr2Expr(p: ProofExpr)(implicit ctx: Context): Expr = replaceFromSymbols(ctx.substs, p.e)
       implicit def seqProofExpr2SeqExpr(s: Seq[ProofExpr])(implicit ctx: Context): Seq[Expr] = s map proofExpr2Expr
-
-      def evalEqChain(node: EqNode)(implicit ctx: Context): (Attempt[Theorem], Expr) = node.next match {
-        case next: EqNode =>
-          val localthm = prove((node.expr: Expr) === next.expr, rec(node.jst))
-          val (restthm, last) = evalEqChain(next)
-          (prove((node.expr: Expr) === last, localthm, restthm), last)
-
-        case EqLeaf(last) =>
-          (prove((node.expr: Expr) === last, rec(node.jst)), last)
-      }
 
       case class Context(substs: Map[Variable, Expr], facts: Map[String, Theorem], ihss: Map[String, StructuralInductionHypotheses]) {
         def withSubst(v: Variable, expr: Expr) = Context(substs + (v -> expr), facts, ihss)
@@ -108,9 +86,6 @@ trait ProofTrees { self: AssistedTheory with ProofBuilder =>
         case Fact(id) => ctx fact id
         case Let(id, v, in) => rec(v) flatMap (v => rec(in)(ctx withFact (id, v)))
         case Prove(expr, lemmas) => Attempt.all(lemmas map rec) flatMap (prove(expr, _))
-
-        case n: EqNode => evalEqChain(n)._1
-        case EqLeaf(_) => Attempt.fail("Invalid equality chain")
       }
 
       rec(proof)(Context(Map.empty, facts, ihses))
@@ -137,6 +112,8 @@ trait ProofTrees { self: AssistedTheory with ProofBuilder =>
         lines.mkString("\n")
       }
 
+      def lineSize(line: String): Int = (line split ("\n")).foldLeft(0)((acc, line) => Math.max(acc, line.size))
+
       def synthValDef(v: ValDef)(implicit ctx: Context): String = s""""${v.id.name}" :: ${v.tpe}"""
 
       def synthExpr(e: Expr)(implicit ctx: Context): String = e match {
@@ -151,48 +128,77 @@ trait ProofTrees { self: AssistedTheory with ProofBuilder =>
         s"""case C(`${c.id.name}`${fieldstr}) => ${rec(c.body)(ctx indented)}"""
       }
 
-      def synthEqChain(chain: EqChain)(implicit ctx: Context): String = {
-        def inner(chain: EqChain): (List[String], Int) = chain match {
-          case EqNode(expr, jst, next @ EqExpr(nextExpr)) =>
-            val exprstr = synthExpr(expr)(ctx noBlock)
-            val jststr = if (jst == Prove(ProofExpr(Equals(expr, nextExpr)))) "trivial" else recNoBlock(jst)
-            val localen = Math.max(exprstr.size, jststr.size)
-            val (rest, globalen) = inner(next)
-            (exprstr :: jststr :: rest, Math.max(localen, globalen))
-
-          case EqLeaf(expr) =>
-            val exprstr = synthExpr(expr)(ctx noBlock)
-            (List(exprstr), exprstr.size)
+      def tryTurnIntoEqChain(p: Prove)(implicit ctx: Context): Attempt[String] = {
+        sealed abstract class EqChain
+        case class EqNode(expr: ProofExpr, jst: Proof, next: EqChain) extends EqChain
+        case class EqLeaf(expr: ProofExpr) extends EqChain
+        object EqExpr {
+          def unapply(eq: EqChain): Option[ProofExpr] = eq match {
+            case EqNode(expr, _, _) => Some(expr)
+            case EqLeaf(expr) => Some(expr)
+          }
         }
 
-        val (strs, len) = inner(chain)
+        def synthEqChain(chain: EqChain)(implicit ctx: Context): String = {
+          def inner(chain: EqChain): (List[String], Int) = chain match {
+            case EqNode(expr, jst, next @ EqExpr(nextExpr)) =>
+              val exprstr = synthExpr(expr)(ctx noBlock)
+              val jststr = if (jst == Prove(ProofExpr(Equals(expr, nextExpr)))) "trivial" else recNoBlock(jst)
+              val localen = Math.max(lineSize(exprstr), lineSize(jststr))
+              val (rest, globalen) = inner(next)
+              (exprstr :: jststr :: rest, Math.max(localen, globalen))
 
-        if (strs.size == 1) strs.head
-        else strs.zipWithIndex.map {
-          case (str, idx) =>
-            val pad = (" " * (len - str.size))
-            if (idx == 0) str + pad + " ==|"
-            else if (idx == strs.size - 1) "|" + str + pad
-            else if (idx % 2 == 0) "|" + str + pad + " ==|"
-            else "|  " + pad + str + " |"
-        }.mkString("\n")
-      }
+            case EqLeaf(expr) =>
+              val exprstr = synthExpr(expr)(ctx noBlock)
+              (List(exprstr), exprstr.size)
+          }
 
-      def tryTurnIntoEqChain(p: Prove)(implicit ctx: Context): Attempt[EqChain] = p match {
-        case Prove(ProofExpr(toProve), Seq(p: Prove, _)) => p match {
-          case Prove(ProofExpr(Equals(`toProve`, leaf)), Seq(next: Prove, jst)) =>
-            def buildChain(p: Prove, sofar: EqChain, lastjst: Proof): Attempt[EqChain] = p match {
-              case Prove(ProofExpr(Equals(`toProve`, expr)), Seq(next: Prove, jst)) => 
-                buildChain(next, EqNode(ProofExpr(expr), lastjst, sofar), jst)
-              case Prove(ProofExpr(BooleanLiteral(true)), Seq()) => EqNode(ProofExpr(toProve), lastjst, sofar)
-              case _ => Attempt.fail("Could not deduce EqChain")
-            } 
-            
-            buildChain(next, EqLeaf(ProofExpr(leaf)), jst)
-            
+          val (strs, len) = inner(chain)
+
+          if (strs.size == 1) strs.head
+          else strs.zipWithIndex.map {
+            case (str, idx) =>
+              val pad = (" " * (len - str.size))
+              if (idx == 0) str + pad + " ==|"
+              else if (idx == strs.size - 1) "|" + str + pad
+              else if (idx % 2 == 0) "|" + str + pad + " ==|"
+              else "|  " + pad + str + " |"
+          }.mkString("\n")
+        }
+
+        p match {
+          case Prove(ProofExpr(toProve), Seq(p: Prove, _)) => p match {
+            case Prove(ProofExpr(Equals(`toProve`, leaf)), Seq(next: Prove, jst)) =>
+              def buildChain(p: Prove, sofar: EqChain, lastjst: Proof): Attempt[EqChain] = p match {
+                case Prove(ProofExpr(Equals(`toProve`, expr)), Seq(next: Prove, jst)) =>
+                  buildChain(next, EqNode(ProofExpr(expr), lastjst, sofar), jst)
+                case Prove(ProofExpr(BooleanLiteral(true)), Seq()) => EqNode(ProofExpr(toProve), lastjst, sofar)
+                case _ => Attempt.fail("Could not deduce EqChain")
+              }
+
+              buildChain(next, EqLeaf(ProofExpr(leaf)), jst) map synthEqChain
+
+            case Prove(ProofExpr(BooleanLiteral(true)), Seq()) => "trivial"
+
+            case _ => Attempt.fail("Could not deduce EqChain")
+          }
           case _ => Attempt.fail("Could not deduce EqChain")
         }
-        case _ => Attempt.fail("Could not deduce EqChain")
+      }
+
+      object ForallIExtractor {
+        def unapply(p: Proof): Option[(Seq[ValDef], Proof)] = p match {
+          case f: ForallI =>
+            def extractVarsAndBody(f: ForallI): (Seq[ValDef], Proof) = f match {
+              case ForallI(vs, next: ForallI) => 
+                val (vars, body) = extractVarsAndBody(next)
+                (vs ++ vars, body)
+              case ForallI(vs, body) => (vs, body)
+            }
+            Some(extractVarsAndBody(f))
+            
+          case _ => None
+        }
       }
 
       def recIndented(proof: Proof)(implicit ctx: Context): String = rec(proof)(ctx indented)
@@ -200,7 +206,7 @@ trait ProofTrees { self: AssistedTheory with ProofBuilder =>
       def recNoBlock(proof: Proof)(implicit ctx: Context): String = rec(proof)(ctx noBlock)
 
       def rec(proof: Proof)(implicit ctx: Context): String = format(proof match {
-        case ForallI(vs, body) =>
+        case ForallIExtractor(vs, body) =>
           s"""forallI(${vs map (synthValDef(_)(ctx noBlock)) mkString (", ")}) { case Seq(${vs map (_.id.name) mkString (", ")}) => 
           |  ${recNewBlock(body)}
           |}"""
@@ -254,13 +260,11 @@ trait ProofTrees { self: AssistedTheory with ProofBuilder =>
 	        |}"""
 
         case p @ Prove(expr, lemmas) => tryTurnIntoEqChain(p) match {
-          case Success(chain) => synthEqChain(chain)
+          case Success(str) => str
           case _ =>
             val lemstr = if (lemmas.size > 0) ", " + ((lemmas map recNoBlock) mkString (", ")) else ""
             s"""prove(${synthExpr(expr)(ctx noBlock) + lemstr})"""
         }
-
-        case chain: EqChain => synthEqChain(chain)
       })
 
       rec(proof)(Context(0, true))

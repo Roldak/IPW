@@ -227,7 +227,7 @@ trait AssistedTheory
             forallIGen(v)(_ => IPWproveTopLevel(if (vals.isEmpty) body else Forall(vals, body), thms, ihses, Following(proofCtx)))
 
           case StructuralInduction =>
-            structuralInductionGen(v, forallToPredicate(expr, v.tpe), "test") {
+            structuralInductionGen(v, forallToPredicate(expr, v.tpe), "ihs") {
               case (tihs, goal) =>
                 IPWproveTopLevel(goal, thms, ihses + ("test" -> tihs), NewTab(s"${tab.title} case '${tihs.constr.name}'", tab.window))
             }
@@ -280,6 +280,7 @@ trait AssistedTheory
       case ex: AttemptException => Failure(ex.reason)
     } finally {
       println(analysisTimer + " ns")
+      
     }
   }
 }
