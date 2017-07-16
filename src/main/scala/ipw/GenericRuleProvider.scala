@@ -75,10 +75,7 @@ trait TheoremBuilder extends GenericRuleProvider { self: AssistedTheory =>
   override def forallEGen(thm: Theorem, exprs: Seq[Expr]): Attempt[Theorem] = forallE(thm, exprs)
   override def andEGen(thm: Theorem, ids: Seq[String])(f: Seq[(String, Theorem)] => Attempt[Theorem]): Attempt[Theorem] =
     andE(thm) map (ids zip _) flatMap f
-  override def andEGenSelect(x: Theorem, i: Int): Attempt[RuleResult] = andE(x) flatMap (_ match {
-    case thms if thms.size > i => Success(thms(i))
-    case _ => Attempt.fail("Out of bounds")
-  })
+  override def andEGenSelect(x: Theorem, i: Int): Attempt[Theorem] = andE(x) flatMap (_(i))
   override def implEGen(thm: Theorem, proof: Theorem): Attempt[Theorem] = implE(thm)(_.by(proof))
 
   // structural induction

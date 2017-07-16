@@ -186,7 +186,7 @@ protected[ipw] trait Analysers { theory: AssistedTheory with GenericRuleProvider
   private def followPath(thm: IPWResult, path: Path, subst: Substitution, instPrems: Seq[IPWResult]): IPWResult = path match {
     //case NotE(next)              => followPath(notE(thm), next, subst, instPrems)
     case AndE(i, next)           => followPath(andEGenSelect(thm, i), next, subst, instPrems)
-    case ForallE(vals, next)     => followPath(forallEGen(thm, vals map (_.toVariable)), next, subst, instPrems)
+    case ForallE(vals, next)     => followPath(forallEGen(thm, vals map (_.toVariable) map subst), next, subst, instPrems)
     case ImplE(assumption, next) => followPath(implEGen(thm, instPrems.head), next, subst, instPrems.tail)
     case EndOfPath               => thm
   }

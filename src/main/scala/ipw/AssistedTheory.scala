@@ -227,8 +227,7 @@ trait AssistedTheory
             forallIGen(v)(_ => IPWproveTopLevel(if (vals.isEmpty) body else Forall(vals, body), thms, ihses, Following(proofCtx)))
 
           case StructuralInduction =>
-            def prop(e: Expr) = exprOps.replaceFromSymbols(Map(v -> e), body)
-            structuralInductionGen(v, prop, "test") {
+            structuralInductionGen(v, forallToPredicate(expr, v.tpe), "test") {
               case (tihs, goal) =>
                 IPWproveTopLevel(goal, thms, ihses + ("test" -> tihs), NewTab(s"${tab.title} case '${tihs.constr.name}'", tab.window))
             }
