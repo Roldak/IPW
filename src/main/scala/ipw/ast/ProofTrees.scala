@@ -218,7 +218,7 @@ trait ProofTrees { self: AssistedTheory with ProofBuilder =>
 
       def rec(proof: Proof)(implicit ctx: Context): String = format(proof match {
         case ForallI(vs, body) =>
-          s"""forallI(${vs map (synthValDef(_)(ctx noBlock)) mkString (", ")}) { Seq(${vs map (_.id.name) mkString (", ")}) => 
+          s"""forallI(${vs map (synthValDef(_)(ctx noBlock)) mkString (", ")}) { case Seq(${vs map (_.id.name) mkString (", ")}) => 
           |  ${recNewBlock(body)}
           |}"""
 

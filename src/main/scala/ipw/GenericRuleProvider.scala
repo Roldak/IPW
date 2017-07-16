@@ -35,7 +35,7 @@ trait GenericRuleProvider { self: AssistedTheory =>
     }
   }
 
-  def eval(t: Attempt[RuleResult], thms: Map[String, Theorem], ihses: Map[String, StructuralInductionHypotheses]): Attempt[Theorem]
+  def eval(t: Attempt[RuleResult], thms: Map[String, Theorem] = Map.empty, ihses: Map[String, StructuralInductionHypotheses] = Map.empty): Attempt[Theorem]
   def expression(t: RuleResult): Expr
 
   // introduction rules
