@@ -76,7 +76,7 @@ object Main {
     val lemma = IPWprove(forall("f" :: ((A, A) =>: A), "z" :: A)(
         (f, z) => isMonoid(f, z) ==> forall("l" :: ListA, "x" :: A)((l, x) => foldl(f, x, l) === f(x, foldl(f, z, l)))), proofsFile)
       
-    println(AST.synthesize(lemma._1))
+    println(synthesizeProof(lemma._1))
 /*
     val theorem = forallI("f" :: ((A, A) =>: A), "z" :: A) { (f, z) =>
       implI(isMonoid(f, z)) { isMonoid =>

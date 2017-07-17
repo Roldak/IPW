@@ -24,6 +24,7 @@ import ipw.io.IWFileInterface
 
 trait AssistedTheory
   extends Theory
+  with Deconstructions
   with Analysers
   with PathTreeOps
   with Suggestions
@@ -33,11 +34,11 @@ trait AssistedTheory
   type IPWResult = RuleResult
   type IPWStructuralInductionHypothesis = StructuralInductionHypothesis
 
-  protected[ipw]type ProofState = (Expr, Seq[NamedSuggestion], Map[String, IPWResult], Boolean)
-  protected[ipw]type UpdateStep = Suggestion
-  protected[ipw]type ChoosingEnd = SynchronizedChannel.End[ProofState, UpdateStep]
-  protected[ipw]type SuggestingEnd = SynchronizedChannel.End[UpdateStep, ProofState]
-  protected[ipw]type StatusCallback = (Expr, Status) => Unit
+  protected[ipw] type ProofState = (Expr, Seq[NamedSuggestion], Map[String, IPWResult], Boolean)
+  protected[ipw] type UpdateStep = Suggestion
+  protected[ipw] type ChoosingEnd = SynchronizedChannel.End[ProofState, UpdateStep]
+  protected[ipw] type SuggestingEnd = SynchronizedChannel.End[UpdateStep, ProofState]
+  protected[ipw] type StatusCallback = (Expr, Status) => Unit
   private type ProofContext = (ProofCase, WindowTab, Future[Unit])
 
   protected[ipw] sealed abstract class Status(val stage: Int, val message: String)

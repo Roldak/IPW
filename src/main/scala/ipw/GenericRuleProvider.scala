@@ -16,25 +16,6 @@ trait GenericRuleProvider { self: AssistedTheory =>
     def expression: Expr = self.expression(r)
   }
 
-  protected[GenericRuleProvider] def allCases(tpe: ADTType): Seq[(ADT, Seq[Variable], Identifier)] = {
-    // taken from Welder
-    val constructors = tpe.getADT match {
-      case sort: TypedADTSort => sort.constructors
-      case cons: TypedADTConstructor => Seq(cons)
-    }
-
-    constructors map { (constructor: TypedADTConstructor) =>
-      val variables = constructor.fields map { (field: ValDef) =>
-        val name = field.toVariable.id.name
-        Variable.fresh(name, field.tpe)
-      }
-
-      val expr = ADT(constructor.toType, variables)
-
-      (expr, variables, constructor.definition.id)
-    }
-  }
-
   def eval(t: Attempt[RuleResult], thms: Map[String, Theorem] = Map.empty, ihses: Map[String, StructuralInductionHypotheses] = Map.empty): Attempt[Theorem]
   def expression(t: RuleResult): Expr
 
@@ -94,7 +75,7 @@ trait ProofBuilder extends GenericRuleProvider with ProofTrees { self: AssistedT
   override type RuleResult = (AST.Proof, Expr)
 
   override def eval(p: Attempt[RuleResult], thms: Map[String, Theorem], ihses: Map[String, StructuralInductionHypotheses]): Attempt[Theorem] =
-    p flatMap { case (proof, _) => AST.eval(proof, thms, ihses) }
+    p flatMap { case (proof, _) => evalProof(proof, thms, ihses) }
   override def expression(p: RuleResult): Expr = p._2
 
   // introduction rules
@@ -127,8 +108,8 @@ trait ProofBuilder extends GenericRuleProvider with ProofTrees { self: AssistedT
   // structural induction
 
   override def structuralInductionGen(v: ValDef, prop: Expr => Expr, ihs: String)(f: (StructuralInductionHypothesis, Expr) => Attempt[RuleResult]): Attempt[RuleResult] = {
-    val cases = allCases(v.tpe.asInstanceOf[ADTType]) map {
-      case (adt, vars, id) =>
+    val cases = ADTDeconstructable.cases(v.tpe.asInstanceOf[ADTType]) map {
+      case (id, adt, vars) =>
         AST.Case(id, vars, f(StructuralInductionHypothesis(id, adt, e => (AST.HypothesisApplication(ihs, e), prop(e)), vars), prop(adt))._1)
     }
 
