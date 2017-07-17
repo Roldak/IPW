@@ -46,21 +46,15 @@ trait ProofSynthetizers { theory: AssistedTheory with ProofBuilder =>
   }
 
   private def tryTurnIntoEqChain(p: Prove)(implicit ctx: Context): Attempt[String] = {
-    sealed abstract class EqChain
-    case class EqNode(expr: ProofExpr, jst: Proof, next: EqChain) extends EqChain
-    case class EqLeaf(expr: ProofExpr) extends EqChain
-    object EqExpr {
-      def unapply(eq: EqChain): Option[ProofExpr] = eq match {
-        case EqNode(expr, _, _) => Some(expr)
-        case EqLeaf(expr) => Some(expr)
-      }
-    }
+    sealed abstract class EqChain(val expr: ProofExpr)
+    case class EqNode(override val expr: ProofExpr, jst: Proof, next: EqChain) extends EqChain(expr)
+    case class EqLeaf(override val expr: ProofExpr) extends EqChain(expr)
 
     def synthEqChain(chain: EqChain)(implicit ctx: Context): String = {
       def inner(chain: EqChain): (List[String], Int) = chain match {
-        case EqNode(expr, jst, next @ EqExpr(nextExpr)) =>
+        case EqNode(expr, jst, next) =>
           val exprstr = synthExpr(expr)(ctx noBlock)
-          val jststr = if (jst == Prove(ProofExpr(Equals(expr, nextExpr)))) "trivial" else recNoBlock(jst)
+          val jststr = if (jst == Prove(ProofExpr(Equals(expr, next.expr)))) "trivial" else recNoBlock(jst)
           val localen = Math.max(lineSize(exprstr), lineSize(jststr))
           val (rest, globalen) = inner(next)
           (exprstr :: jststr :: rest, Math.max(localen, globalen))
@@ -82,21 +76,19 @@ trait ProofSynthetizers { theory: AssistedTheory with ProofBuilder =>
           else "|  " + pad + str + " |"
       }.mkString("\n")
     }
+    
+    def buildChain(toProve:Expr, p: Prove, sofar: EqChain, lastjst: Proof): Attempt[EqChain] = p match {
+      case Prove(ProofExpr(Equals(`toProve`, expr)), Seq(next: Prove, jst)) =>
+        buildChain(toProve, next, EqNode(ProofExpr(expr), lastjst, sofar), jst)
+      case Prove(ProofExpr(BooleanLiteral(true)), Seq()) => EqNode(ProofExpr(toProve), lastjst, sofar)
+      case _ => Attempt.fail("Could not deduce EqChain")
+    }
 
     p match {
       case Prove(ProofExpr(toProve), Seq(p: Prove, _)) => p match {
-        case Prove(ProofExpr(Equals(`toProve`, leaf)), Seq(next: Prove, jst)) =>
-          def buildChain(p: Prove, sofar: EqChain, lastjst: Proof): Attempt[EqChain] = p match {
-            case Prove(ProofExpr(Equals(`toProve`, expr)), Seq(next: Prove, jst)) =>
-              buildChain(next, EqNode(ProofExpr(expr), lastjst, sofar), jst)
-            case Prove(ProofExpr(BooleanLiteral(true)), Seq()) => EqNode(ProofExpr(toProve), lastjst, sofar)
-            case _ => Attempt.fail("Could not deduce EqChain")
-          }
-
-          buildChain(next, EqLeaf(ProofExpr(leaf)), jst) map synthEqChain
-
+        case Prove(ProofExpr(Equals(`toProve`, leaf)), Seq(next: Prove, jst)) => 
+          buildChain(toProve, next, EqLeaf(ProofExpr(leaf)), jst) map synthEqChain
         case Prove(ProofExpr(BooleanLiteral(true)), Seq()) => "trivial"
-
         case _ => Attempt.fail("Could not deduce EqChain")
       }
       case _ => Attempt.fail("Could not deduce EqChain")
